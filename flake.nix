@@ -14,6 +14,7 @@
         (pkgs.rust-bin.nightly.latest.default.override {
           extensions = ["rust-src" "rust-docs" "miri" "rust-analyzer"];
         })
+        pkgs.zig
       ];
     };
   };

@@ -8,7 +8,7 @@
 - Zig: not stable, no type inference for generics.
 - D: unpopular, complex.
 - Lua: slow.
-- Rust: unsafe is too complicated.
+- Rust: too complex.
 
 # Features
 

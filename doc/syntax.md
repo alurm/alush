@@ -33,8 +33,36 @@ multiline-commands = { ( ' ' | '\t' ) } (
 ```text
 var make-adder (
     var sum 0
+    val (
+        set sum $(+ $sum $1)
+        get sum
+    )
+)
+```
+
+## Internal representation
+
+```text
+call(var,
+    make-adder,
+    closure(do,
+        closure(???)
+    )
+    namespace(
+        closure(
+            do()
+        )
+    )
+)
+```
+
+# Example
+
+```text
+var make-adder (
+    var sum 0
     put (
-        set sum $(+ $sum $0)
+        set sum $(+ $sum $1)
         get sum
     )
 )
