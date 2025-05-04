@@ -5,11 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use eval::{EnvNode, Eval};
-
 mod eval;
-mod eval_2;
-mod eval_3;
 mod gc;
 mod grammar;
 mod print;
@@ -29,7 +25,6 @@ fn chars() -> impl Iterator<Item = char> {
 fn main() {
     let mut iter = (Box::new(chars()) as Box<dyn Iterator<Item = char>>).peekable();
 
-    use crate::eval_3 as eval;
     let mut env = eval::Env::new();
     {
         let mut stack = env.gc.get(env.stack).borrow_mut();
