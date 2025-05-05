@@ -170,6 +170,16 @@ impl Heap {
     }
 }
 
+impl<T: Trace> Trace for Option<T> {
+    fn trace(&self) -> Vec<Id> {
+        if let Some(value) = self {
+            value.trace()
+        } else {
+            vec![]
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::{Gc, Heap, Id, Trace, Strategy};

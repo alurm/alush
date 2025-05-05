@@ -1,12 +1,12 @@
 pub type Input = std::iter::Peekable<Box<dyn Iterator<Item = char>>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Command(pub Vec<Expr>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Commands(pub Vec<Command>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     String(String),
     Closure(Commands),
@@ -91,6 +91,7 @@ fn a_test() {
         (
             # Recursion
         )
+        # This is hack to end input.
         )
     ");
     dbg!(grammar::multiline_commands(&mut input));

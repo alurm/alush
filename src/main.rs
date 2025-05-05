@@ -5,6 +5,8 @@ use std::{
     rc::Rc,
 };
 
+use eval::{Env, Value};
+
 mod eval;
 mod gc;
 mod grammar;
@@ -22,16 +24,47 @@ fn chars() -> impl Iterator<Item = char> {
     })
 }
 
+#[test]
+fn test_eval() {
+    let mut env = eval::Env::new();
+    // let stack = env.gc.get_mut(env.stack);
+    // stack.0.push(eval::Frame { variables: HashMap::new() });
+    let mut input = syntax::input_from_str(
+        "
+            var var-name x
+            var $var-name 1
+            val $(
+                set x 3
+                var tmp hello
+                del tmp
+                val $(
+                    var x 10
+                    set x 4
+                )
+                get x
+            )
+            )
+        "
+    );
+    let commands = grammar::multiline_commands(&mut input).unwrap();
+    let commands = syntax::commands_from_grammar(commands);
+    let result = env.eval_expr(&syntax::Expr::Block(commands)).unwrap();
+    match env.gc.get(result) {
+        Value::String(s) => assert_eq!(s, "3"),
+        _ => unreachable!()
+    }
+}
+
 fn main() {
     let mut iter = (Box::new(chars()) as Box<dyn Iterator<Item = char>>).peekable();
 
     let mut env = eval::Env::new();
-    {
-        let mut stack = env.gc.get(env.stack).borrow_mut();
-        stack.0.push(eval::Frame {
-            variables: HashMap::new(),
-        });
-    }
+    // {
+    //     let mut stack = env.gc.get_mut(env.stack);
+    //     stack.0.push(eval::Frame {
+    //         variables: HashMap::new(),
+    //     });
+    // }
     loop {
         if let Some(command) = grammar::shell(&mut iter) {
             let command = syntax::command_from_grammar(command);
@@ -45,15 +78,18 @@ fn main() {
             //         }
             // )));
             // command.eval(env);
-            match eval::eval_cmd(&mut env, &command) {
+            match env.eval_cmd(&command) {
                 Err(e) => {
                     println!("error:");
                     e.iter().for_each(|v| println!("{v}"));
                     continue;
                 }
                 Ok(v) => {
-                    let eval::Value::String(string) = env.gc.get(v);
-                    println!("eval: {string}");
+                    match env.gc.get(v) {
+                        Value::String(s) => println!("{s}"),
+                        Value::Builtin(_f) => println!("<built-in fn>"),
+                        Value::Closure { .. } => println!("<closure>"),
+                    }
                 }
             };
             println!();
