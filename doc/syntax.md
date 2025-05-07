@@ -6,9 +6,11 @@ string =
     | not(' ', '\n', ')', '\t') { not(' ', '\n', ')') }
 ;
 
+any = not()
+
 quoted-string =
     | '\'' [ '\'' quoted-string ]
-    | any() quoted-string
+    | any quoted-string
 ;
 
 commands =
@@ -19,6 +21,17 @@ commands =
 command = expr { ' ' expr } ;
 
 inline-command = ')' | command ')' ;
+
+# Not sure if correct.
+# The point is that this doesn't require ')'.
+chunk = { ( ' ' | '\'t ) } (
+    | ''
+    | '#' { not('\n') } '\n' block
+    | '\n' block
+    | command '\n' block
+);
+
+multiline-commands = block ')'
 
 multiline-commands = { ( ' ' | '\t' ) } (
     | ')'

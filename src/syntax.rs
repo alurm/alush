@@ -1,21 +1,24 @@
 pub type Input = std::iter::Peekable<Box<dyn Iterator<Item = char>>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Command(pub Vec<Expr>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Commands(pub Vec<Command>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Expr {
     String(String),
-    Closure(Commands),
-    Block(Commands),
+    // Rc is needed since closures need to own commands without cloning exprs expensively.
+    Closure(Rc<Commands>),
+    Block(Rc<Commands>),
 }
+
+use std::rc::Rc;
 
 use crate::grammar;
 
-pub fn command_from_grammar(g: grammar::Command) -> Command {
+pub fn command_from_grammar(g: &grammar::Command) -> Command {
     let mut c = Command(Vec::new());
 
     for e in g {
@@ -25,7 +28,7 @@ pub fn command_from_grammar(g: grammar::Command) -> Command {
     c
 }
 
-pub fn commands_from_grammar(g: grammar::Commands) -> Commands {
+pub fn commands_from_grammar(g: &grammar::Commands) -> Commands {
     let mut cs = Commands(Vec::new());
 
     for c in g {
@@ -35,23 +38,23 @@ pub fn commands_from_grammar(g: grammar::Commands) -> Commands {
     cs
 }
 
-pub fn expr_from_grammar(g: grammar::Expr) -> Expr {
+pub fn expr_from_grammar(g: &grammar::Expr) -> Expr {
     match g {
         // (...) is a closure.
         grammar::Expr::Commands {
             dollar: false,
             value,
-        } => Expr::Closure(commands_from_grammar(value)),
+        } => Expr::Closure(Rc::new(commands_from_grammar(value))),
         // $(...) is a block.
         grammar::Expr::Commands {
             dollar: true,
             value,
-        } => Expr::Block(commands_from_grammar(value)),
+        } => Expr::Block(Rc::new(commands_from_grammar(value))),
         // foo is a string.
         grammar::Expr::String {
             dollar: false,
             value,
-        } => Expr::String(value),
+        } => Expr::String(value.into()),
         // $x desugars to $(get x)
         grammar::Expr::String {
             dollar: true,
@@ -59,9 +62,9 @@ pub fn expr_from_grammar(g: grammar::Expr) -> Expr {
         } => {
             let mut command = Command(Vec::new());
             command.0.push(Expr::String(String::from("get")));
-            command.0.push(Expr::String(value));
+            command.0.push(Expr::String(value.into()));
             let commands = vec![command];
-            Expr::Block(Commands(commands))
+            Expr::Block(Rc::new(Commands(commands)))
         }
     }
 }

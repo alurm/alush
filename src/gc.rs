@@ -3,14 +3,24 @@
 // The idea in this iteration is to use std::any::Any.
 
 use std::{
-    any::{self, Any, TypeId},
-    collections::{HashMap, HashSet, VecDeque},
-    marker::PhantomData, ptr, sync::Mutex,
+    any::Any, collections::{HashMap, HashSet, VecDeque}, marker::PhantomData, sync::Mutex
 };
+
+impl<T: Trace> Clone for Gc<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T: Trace> Copy for Gc<T> {}
+
+static COUNTER: Mutex<usize> = Mutex::new(0);
 
 struct Object {
     value: Box<dyn Trace>,
     reachable: bool,
+    // Used by aggressive and checking strategies during access.
+    alive: bool,
 }
 
 /// An opaque id for a value in the GC's heap.
@@ -21,23 +31,15 @@ pub struct Id {
     index: usize,
 }
 
+/// A trait to trace though a GC'ed value.
+pub trait Trace: Any {
+    fn trace(&self) -> Vec<Id>;
+}
+
 /// A handle to a value allocated in the GC's [Heap].
 pub struct Gc<T: Trace> {
     pub id: Id,
     phantom_data: PhantomData<T>,
-}
-
-impl<T: Trace> Clone for Gc<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<T: Trace> Copy for Gc<T> {}
-
-/// A trait to trace though a GC'ed value.
-pub trait Trace: Any {
-    fn trace(&self) -> Vec<Id>;
 }
 
 /// An owner of [Gc]s.
@@ -51,12 +53,14 @@ pub struct Heap {
 }
 
 pub enum Strategy {
-    Default,
-    Aggressive,
     Disabled,
+    Default,
+    // Shouldn't actually delete objects at this point.
+    // Instead a check for deadness is made.
+    Aggressive,
+    // Supposed to check for overroots and underroots.
+    Checking,
 }
-
-static COUNTER: Mutex<usize> = Mutex::new(0);
 
 impl Heap {
     pub fn new(strategy: Strategy) -> Self {
@@ -74,9 +78,15 @@ impl Heap {
         }
     }
 
+    pub fn rooted<T: Trace>(&mut self, init: T) -> Gc<T> {
+        let object = self.alloc(init);
+        self.root(object);
+        object
+    }
+
     pub fn alloc<T: Trace>(&mut self, init: T) -> Gc<T> {
         match self.strategy {
-            Strategy::Aggressive => self.collect(),
+            Strategy::Aggressive | Strategy::Checking => self.collect(),
             Strategy::Default if self.map.len() == self.capacity => self.collect(),
             Strategy::Default | Strategy::Disabled => {}
         }
@@ -91,21 +101,28 @@ impl Heap {
         let object = Object {
             value: Box::new(init),
             reachable: false,
+            alive: true,
         };
 
         self.map.insert(id, object);
 
-        Gc { id, phantom_data: PhantomData }
+        let object = Gc { id, phantom_data: PhantomData };
+
+        object
     }
 
     fn get_object(&self, id: Id) -> &Object {
         assert!(self.id == id.heap);
-        self.map.get(&id).unwrap()
+        let object = self.map.get(&id).unwrap();
+        if !object.alive { panic!() };
+        object
     }
 
     fn get_mut_object(&mut self, id: Id) -> &mut Object {
         assert!(self.id == id.heap);
-        self.map.get_mut(&id).unwrap()
+        let object = self.map.get_mut(&id).unwrap();
+        if !object.alive { panic!() };
+        object
     }
 
     /// Returns a shared reference to a value contained in a [Gc].
@@ -130,16 +147,23 @@ impl Heap {
 
     /// Prevents a [Gc] from being collected.
     pub fn root<T: Trace>(&mut self, id: Gc<T>) {
-        self.roots.insert(id.id);
+        // Assert that we didn't root twice.
+        // Should reduce bugs, hopefully.
+        let ok = self.roots.insert(id.id);
+        if let Strategy::Checking = self.strategy { assert!(ok) };
     }
 
     /// Allows a [Gc] to be collected, if discovered to be unreachable.
     pub fn unroot<T: Trace>(&mut self, id: Gc<T>) {
-        self.roots.remove(&id.id);
+        // Assert that we didn't remove twice.
+        // Should reduce bugs, hopefully.
+        let ok = self.roots.remove(&id.id);
+        if let Strategy::Checking = self.strategy { assert!(ok) };
     }
 
     // Collects unreachable objects.
     pub fn collect(&mut self) {
+        // todo: base this on strategy
         println!("collecting");
 
         let mut queue = VecDeque::new();
@@ -161,7 +185,20 @@ impl Heap {
             }
         }
 
-        self.map.retain(|_, object| object.reachable);
+        // If we are [Aggressive] or [Checking], don't actually delete objects.
+        match self.strategy {
+            Strategy::Default | Strategy::Disabled => {
+                self.map.retain(|_, object| object.reachable)
+            }
+            Strategy::Aggressive | Strategy::Checking => {
+                for (_, object) in &mut self.map {
+                    if !object.reachable {
+                        object.alive = false;
+                    }
+                }
+            }
+        }
+
         self.map.shrink_to_fit();
         self.map
             .values_mut()

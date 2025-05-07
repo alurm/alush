@@ -112,6 +112,43 @@ fn commands(i: &mut Input) -> Option<Commands> {
     }
 }
 
+// // Interestingly using shell makes trailing comments not allowed.
+// pub fn file(i: &mut Input) -> Option<Commands> {
+//     let mut commands = Commands::new();
+//     loop {
+//         if let None = peek(i) {
+//             return Some(commands)
+//         }
+//         commands.push(shell(i)?)
+//     }
+// }
+
+pub fn file(i: &mut Input) -> Option<Commands> {
+    let mut commands = Commands::new();
+    loop {
+        loop {
+            match peek(i) {
+                Some(' ') | Some('\t') => {
+                    i.next();
+                },
+                _ => break,
+            }
+        }
+        if let None = peek(i) {
+            return Some(commands)
+        }
+        else if accept(i, '#') {
+            while not(i, "\n") {}
+            expect(i, '\n')?;
+        }
+        else if accept(i, '\n') {}
+        else {
+            commands.push(command(i)?);
+            expect(i, '\n')?;
+        }
+    }
+}
+
 pub fn multiline_commands(i: &mut Input) -> Option<Commands> {
     let mut commands = Commands::new();
     loop {
@@ -141,7 +178,9 @@ pub fn multiline_commands(i: &mut Input) -> Option<Commands> {
 // Initially adapted from multiline_commands().
 pub fn shell(i: &mut Input) -> Option<Command> {
     loop {
-        while accept(i, ' ') {}
+        while let Some(' ' | '\t') = peek(i) {
+            i.next();
+        }
         if accept(i, '#') {
             while not(i, "\n") {}
             expect(i, '\n')?;

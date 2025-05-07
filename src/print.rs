@@ -89,7 +89,7 @@ fn test_command_from_grammar() {
     let one = {
         let mut input = crate::syntax::input_from_str(&original);
         let grammar = crate::grammar::command(&mut input).unwrap();
-        let syntax = crate::syntax::command_from_grammar(grammar);
+        let syntax = crate::syntax::command_from_grammar(&grammar);
         let mut string = String::new();
         syntax.pretty(&mut string, 0);
         string
@@ -98,7 +98,7 @@ fn test_command_from_grammar() {
     let two = {
         let mut input = crate::syntax::input_from_str(&one);
         let grammar = crate::grammar::command(&mut input).unwrap();
-        let syntax = crate::syntax::command_from_grammar(grammar);
+        let syntax = crate::syntax::command_from_grammar(&grammar);
         let mut string = String::new();
         syntax.pretty(&mut string, 0);
         string
