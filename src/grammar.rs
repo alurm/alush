@@ -137,10 +137,7 @@ pub fn file(i: &mut Input) -> Option<Commands> {
         if let None = peek(i) {
             return Some(commands)
         }
-        else if accept(i, '#') {
-            while not(i, "\n") {}
-            expect(i, '\n')?;
-        }
+        else if accept(i, '#') { comment(i)? }
         else if accept(i, '\n') {}
         else {
             commands.push(command(i)?);
@@ -163,10 +160,7 @@ pub fn multiline_commands(i: &mut Input) -> Option<Commands> {
         if accept(i, ')') {
             return Some(commands);
         }
-        else if accept(i, '#') {
-            while not(i, "\n") {}
-            expect(i, '\n')?;
-        }
+        else if accept(i, '#') { comment(i)? }
         else if accept(i, '\n') {}
         else {
             commands.push(command(i)?);
@@ -175,16 +169,18 @@ pub fn multiline_commands(i: &mut Input) -> Option<Commands> {
     }
 }
 
+fn comment(i: &mut Input) -> Option<()> {
+    while not(i, "\n") {}
+    expect(i, '\n')
+}
+
 // Initially adapted from multiline_commands().
 pub fn shell(i: &mut Input) -> Option<Command> {
     loop {
         while let Some(' ' | '\t') = peek(i) {
             i.next();
         }
-        if accept(i, '#') {
-            while not(i, "\n") {}
-            expect(i, '\n')?;
-        }
+        if accept(i, '#') { comment(i)? }
         else if accept(i, '\n') {}
         else {
             let c = command(i)?;
@@ -206,13 +202,39 @@ fn inline_command(i: &mut Input) -> Option<Commands> {
     }
 }
 
+fn multiline_command_part(i: &mut Input) -> Option<Vec<Expr>> {
+    let mut exprs = Vec::new();
+    loop {
+        while let Some(' ' | '\t') = peek(i) { i.next(); }
+        if accept(i, ';') {
+            return Some(exprs);
+        } else if accept(i, '#') {
+            comment(i);
+        } else if accept(i, '\n') {}
+        // We could've called back to command here to allow for recursion.
+        // But it's not clear that it's better.
+        else {
+            exprs.push(expr(i)?);
+
+            while accept(i, ' ') {
+                exprs.push(expr(i)?);
+            }
+        }
+    }
+}
+
 pub fn command(i: &mut Input) -> Option<Command> {
     let mut command = Command::new();
 
     command.push(expr(i)?);
 
     while accept(i, ' ') {
-        command.push(expr(i)?);
+        if accept(i, '\\') {
+            let mut exprs = multiline_command_part(i)?;
+            command.append(&mut exprs);
+        } else {
+            command.push(expr(i)?);
+        }
     }
 
     return Some(command);

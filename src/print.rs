@@ -20,7 +20,7 @@ fn tab(to: &mut String, depth: usize) {
 }
 
 impl Expr {
-    fn pretty(&self, to: &mut String, mut depth: usize) {
+    pub fn pretty(&self, to: &mut String, mut depth: usize) {
         match self {
             Expr::String(s) => {
                 to.push('\'');

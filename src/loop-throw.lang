@@ -1,0 +1,10 @@
+var count 0
+set count $(catch $(
+    loop $(
+        println $count
+        set count $(+ 1 $count)
+        $(if $(= $count 10) (throw $count) ())
+    )
+))
+println 'Final value of count'
+println $count

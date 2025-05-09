@@ -16,11 +16,11 @@ impl<T: Trace> Copy for Gc<T> {}
 
 static COUNTER: Mutex<usize> = Mutex::new(0);
 
-struct Object {
+pub struct Object {
     value: Box<dyn Trace>,
     reachable: bool,
     // Used by aggressive and checking strategies during access.
-    alive: bool,
+    pub alive: bool,
 }
 
 /// An opaque id for a value in the GC's heap.
@@ -44,8 +44,8 @@ pub struct Gc<T: Trace> {
 
 /// An owner of [Gc]s.
 pub struct Heap {
-    map: HashMap<Id, Object>,
-    roots: HashSet<Id>,
+    pub map: HashMap<Id, Object>,
+    pub roots: HashMap<Id, usize>,
     counter: usize,
     capacity: usize,
     id: usize,
@@ -67,7 +67,7 @@ impl Heap {
         Heap {
             capacity: 0,
             map: HashMap::new(),
-            roots: HashSet::new(),
+            roots: HashMap::new(),
             counter: 0,
             strategy,
             id: {
@@ -147,28 +147,35 @@ impl Heap {
 
     /// Prevents a [Gc] from being collected.
     pub fn root<T: Trace>(&mut self, id: Gc<T>) {
-        // Assert that we didn't root twice.
-        // Should reduce bugs, hopefully.
-        let ok = self.roots.insert(id.id);
-        if let Strategy::Checking = self.strategy { assert!(ok) };
+        if let Some(value) = self.roots.get_mut(&id.id) {
+            *value += 1;
+        } else {
+            self.roots.insert(id.id, 1);
+        }
     }
 
     /// Allows a [Gc] to be collected, if discovered to be unreachable.
     pub fn unroot<T: Trace>(&mut self, id: Gc<T>) {
-        // Assert that we didn't remove twice.
-        // Should reduce bugs, hopefully.
-        let ok = self.roots.remove(&id.id);
-        if let Strategy::Checking = self.strategy { assert!(ok) };
+        if let Some(value) = self.roots.get_mut(&id.id) {
+            // assert!(*value != 0);
+            *value -= 1;
+            if *value == 0 {
+                self.roots.remove(&id.id);
+            }
+        } else if let Strategy::Checking = self.strategy {
+            panic!()
+        }
     }
 
     // Collects unreachable objects.
     pub fn collect(&mut self) {
-        // todo: base this on strategy
-        println!("collecting");
+        if let Strategy::Checking = self.strategy {
+            println!("collecting");
+        }
 
         let mut queue = VecDeque::new();
 
-        for &root in &self.roots {
+        for (&root, _) in &self.roots {
             queue.push_back(root);
             // queue.push_back(self.map.get_mut(root).unwrap());
         }
@@ -200,6 +207,7 @@ impl Heap {
         }
 
         self.map.shrink_to_fit();
+        self.roots.shrink_to_fit();
         self.map
             .values_mut()
             .for_each(|object| object.reachable = false);
