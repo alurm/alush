@@ -119,6 +119,43 @@ fn test_precise_gc() {
 }
 
 #[test]
+fn test_precise_catch_loop_throw() {
+    let commands = {
+        let string = "
+            var count 0
+            val $(catch $(
+                loop $(
+                    println $count
+                    set count $(+ 1 $count)
+                    $(if $(= $count 10) (throw $count) ())
+                )
+            ))
+        ";
+        let mut input = syntax::input_from_str(string);
+        let commands = grammar::file(&mut input).unwrap();
+        let commands = syntax::commands_from_grammar(&commands);
+        commands
+    };
+
+    let mut env = Env::new(gc::Strategy::Checking);
+    let id = env.eval_expr(&syntax::Expr::Block(Rc::new(commands))).unwrap();
+    // let id = env.eval_cmd(&command).unwrap();
+    let Value::String(string) = env.gc.get(id) else { panic!() };
+    assert_eq!(string, "10");
+    env.gc.unroot(id);
+    env.gc.unroot(env.stack);
+    env.gc.collect();
+    println!("roots: {}", env.gc.roots.len());
+    println!("objects: {}", env.gc.map.iter().fold(0, |a, b| {
+        if b.1.alive {
+            a + 1
+        } else {
+            a
+        }
+    }));
+}
+
+#[test]
 fn test_factorial() {
     let string = "
         var factorial (

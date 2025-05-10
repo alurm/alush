@@ -369,9 +369,18 @@ impl Env {
             up: None
         });
 
-        builtins.iter().for_each(|(_, v)| {
-            gc.unroot(*v);
-        });
+        // builtins.iter().for_each(|(_, v)| {
+        //     gc.unroot(*v);
+        // });
+
+        let v = gc.get(stack)
+            .frame.variables.iter()
+            .map(|(_, v)| *v)
+            .collect::<Vec<_>>();
+    
+        v.into_iter().for_each(|v| gc.unroot(v));
+
+        // gc.get(stack).frame.variables.iter()
         
         // let stack = gc.rooted(Stack { frame: Frame { variables }, up: None });
         Env { gc, stack }
@@ -452,6 +461,7 @@ impl Env {
                 for value in tail_values {
                     self.gc.unroot(value);
                 }
+                self.gc.unroot(head);
                 return Ok(v);
             }
 
