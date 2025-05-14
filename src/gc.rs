@@ -42,6 +42,21 @@ pub struct Gc<T: Trace> {
     phantom_data: PhantomData<T>,
 }
 
+impl<T: Trace> PartialEq for Gc<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl<T: Trace> Eq for Gc<T> {}
+
+impl<T: Trace> std::hash::Hash for Gc<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.phantom_data.hash(state);
+    }
+}
+
 /// An owner of [Gc]s.
 pub struct Heap {
     pub map: HashMap<Id, Object>,

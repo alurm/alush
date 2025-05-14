@@ -1,0 +1,4 @@
+var m $(map)
+var key hello
+m set $key world
+println $(m get $key)

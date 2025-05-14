@@ -9,11 +9,13 @@ pub enum Value {
     String(String),
     Builtin(fn(&mut Env, args: &Vec<Gc<Value>>) -> Result),
     Closure {
-        code: Rc<syntax::Commands>, 
+        code: Rc<syntax::Commands>,
         stack: Gc<Stack>,
     },
     Lazy(fn(&mut Env, args: &[syntax::Expr]) -> Result),
     Throw(Gc<Value>),
+    Map(HashMap<Gc<Value>, Gc<Value>>),
+    // List(Vec<Gc<Value>>),
 }
 
 impl gc::Trace for Value {
@@ -25,6 +27,17 @@ impl gc::Trace for Value {
             Value::Throw(v) => vec![v.id],
             // I think this is correct.
             Value::Lazy(_) => Vec::new(),
+            // Value::List(l) => {
+            //     l.iter().map(|it| it.id).collect()
+            // }
+            Value::Map(m) => {
+                let mut result = Vec::new();
+                for (&k, &v) in m {
+                    result.push(k.id);
+                    result.push(v.id);
+                }
+                result
+            }
         }
     }
 }
@@ -55,7 +68,7 @@ impl gc::Trace for Frame {
         let mut vec = Vec::new();
         for (_, v) in &self.variables {
             vec.push(v.id);
-        };
+        }
         vec
     }
 }
@@ -101,7 +114,7 @@ pub struct Env {
 //                 f.write_str(&pretty)
 //             }
 //             Value::Throw(throw) => {
-                
+
 //             }
 //         }
 //     }
@@ -113,8 +126,9 @@ fn lazy_loop(env: &mut Env, args: &[Expr]) -> Result {
     };
     loop {
         let value = env.eval_expr(body)?;
+        // It's annoying that we have to handle this here manually.
         if let Value::Throw(_) = env.gc.get(value) {
-            return Ok(value)
+            return Ok(value);
         } else {
             env.gc.unroot(value);
         }
@@ -180,10 +194,7 @@ fn builtin_eq(env: &mut Env, args: &Vec<Gc<Value>>) -> Result {
     let [l, r] = args[..] else {
         return Err(vec!["= <a> <b>".into()]);
     };
-    let (
-        Value::String(l),
-        Value::String(r)
-    ) = (env.gc.get(l), env.gc.get(r)) else {
+    let (Value::String(l), Value::String(r)) = (env.gc.get(l), env.gc.get(r)) else {
         return Ok(env.gc.rooted(Value::String("false".into())));
     };
     if l == r {
@@ -197,10 +208,7 @@ fn builtin_not_eq(env: &mut Env, args: &Vec<Gc<Value>>) -> Result {
     let [l, r] = args[..] else {
         return Err(vec!["= <a> <b>".into()]);
     };
-    let (
-        Value::String(l),
-        Value::String(r)
-    ) = (env.gc.get(l), env.gc.get(r)) else {
+    let (Value::String(l), Value::String(r)) = (env.gc.get(l), env.gc.get(r)) else {
         return Ok(env.gc.rooted(Value::String("true".into())));
     };
     if l == r {
@@ -215,9 +223,11 @@ fn builtin_set(env: &mut Env, args: &Vec<Gc<Value>>) -> Result {
         return Err(vec!["set <name> <value>".into()]);
     };
     let Value::String(name) = env.gc.get(name) else {
-        return Err(vec!["set <name: string> <value>".into()])
+        return Err(vec!["set <name: string> <value>".into()]);
     };
-    env.update(&name.to_owned(), value);
+    if !env.update(&name.to_owned(), value) {
+        return Err(vec!["set: var not found".into()]);
+    }
     Ok(env.gc.rooted(Value::String("ok".into())))
 }
 
@@ -232,7 +242,7 @@ fn builtin_val(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
 fn builtin_println(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
     for value in tail_values {
         let Value::String(value) = env.gc.get(*value) else {
-            return Err(vec!["println <:string>...".into()])
+            return Err(vec!["println <:string>...".into()]);
         };
 
         println!("{value}");
@@ -246,9 +256,9 @@ fn builtin_var(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
         let [name, value] = chunk else {
             return Err(vec!["var { <name> <value> }".into()]);
         };
-        
+
         let Value::String(name) = env.gc.get(*name) else {
-            return Err(vec!["set <name: string> <value>".into()])
+            return Err(vec!["set <name: string> <value>".into()]);
         };
 
         let name = name.into();
@@ -262,8 +272,12 @@ fn builtin_var(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
 }
 
 fn builtin_get(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
-    let [name] = tail_values[..] else { return Err(vec!["get <name>".into()]) };
-    let Value::String(name) = env.gc.get(name) else { return Err(vec!["get <name: string>".into()]); };
+    let [name] = tail_values[..] else {
+        return Err(vec!["get <name>".into()]);
+    };
+    let Value::String(name) = env.gc.get(name) else {
+        return Err(vec!["get <name: string>".into()]);
+    };
     let name = name.to_owned();
     let Some(value) = env.lookup(&name) else {
         return Err(vec!["get: var not found".into()]);
@@ -273,8 +287,12 @@ fn builtin_get(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
 }
 
 fn builtin_del(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
-    let [name] = tail_values[..] else { return Err(vec!["del <name>".into()]) };
-    let Value::String(name) = env.gc.get(name) else { return Err(vec!["del <name: string>".into()]); };
+    let [name] = tail_values[..] else {
+        return Err(vec!["del <name>".into()]);
+    };
+    let Value::String(name) = env.gc.get(name) else {
+        return Err(vec!["del <name: string>".into()]);
+    };
     let name = name.to_owned();
     if !env.forget(&name) {
         return Err(vec!["del: var not found".into()]);
@@ -283,10 +301,14 @@ fn builtin_del(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
 }
 
 fn builtin_inc(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
-    let [value] = tail_values[..] else { return Err(vec!["inc <number>".into()]) };
-    let Value::String(value) = env.gc.get(value) else { return Err(vec!["inc <number: string>".into()]); };
+    let [value] = tail_values[..] else {
+        return Err(vec!["inc <number>".into()]);
+    };
+    let Value::String(value) = env.gc.get(value) else {
+        return Err(vec!["inc <number: string>".into()]);
+    };
     let Ok(n) = value.parse::<i32>() else {
-        return Err(vec!["inc: parse failed".into()])
+        return Err(vec!["inc: parse failed".into()]);
     };
     let str = format!("{}", n + 1);
     Ok(env.gc.rooted(Value::String(str)))
@@ -301,12 +323,14 @@ fn builtin_add(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
     let mut sum = 0;
     for &value in tail_values {
         let value = env.gc.get(value);
-        let Value::String(value) = value else { return Err(vec!["add <number: string>...".into()])};
+        let Value::String(value) = value else {
+            return Err(vec!["add <number: string>...".into()]);
+        };
         let Ok(number) = value.parse::<i32>() else {
             return Err(vec!["add: parse failed".into()]);
         };
         sum += number;
-    };
+    }
     let string = format!("{sum}");
     Ok(env.gc.rooted(Value::String(string)))
 }
@@ -315,14 +339,26 @@ fn builtin_mul(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
     let mut product = 1;
     for &value in tail_values {
         let value = env.gc.get(value);
-        let Value::String(value) = value else { return Err(vec!["add <number: string>...".into()])};
+        let Value::String(value) = value else {
+            return Err(vec!["add <number: string>...".into()]);
+        };
         let Ok(number) = value.parse::<i32>() else {
             return Err(vec!["add: parse failed".into()]);
         };
         product *= number;
-    };
+    }
     let string = format!("{product}");
     Ok(env.gc.rooted(Value::String(string)))
+}
+
+fn builtin_map(env: &mut Env, tail_values: &Vec<Gc<Value>>) -> Result {
+    let mut tail = &tail_values[..];
+    let mut map = HashMap::new();
+    while let [k, v, rest @ ..] = tail {
+        map.insert(*k, *v);
+        tail = rest;
+    }
+    Ok(env.gc.rooted(Value::Map(map)))
 }
 
 impl Env {
@@ -332,8 +368,7 @@ impl Env {
         let builtins = [
             (
                 "set",
-                builtin_set as
-                fn(&mut Env, &Vec<Gc<Value>>) -> Result
+                builtin_set as fn(&mut Env, &Vec<Gc<Value>>) -> Result,
             ),
             ("get", builtin_get),
             ("val", builtin_val),
@@ -348,12 +383,10 @@ impl Env {
             ("!=", builtin_not_eq),
             ("throw", builtin_throw),
             ("println", builtin_println),
+            ("map", builtin_map),
         ];
 
-        let builtins = builtins
-            .map(|(k, v)| {
-                (k.into(), gc.rooted(Value::Builtin(v)))
-            });
+        let builtins = builtins.map(|(k, v)| (k.into(), gc.rooted(Value::Builtin(v))));
 
         // Annoying clone here.
         let mut variables = HashMap::from(builtins.clone());
@@ -366,22 +399,25 @@ impl Env {
 
         let stack = gc.rooted(Stack {
             frame: Frame { variables },
-            up: None
+            up: None,
         });
 
         // builtins.iter().for_each(|(_, v)| {
         //     gc.unroot(*v);
         // });
 
-        let v = gc.get(stack)
-            .frame.variables.iter()
+        let v = gc
+            .get(stack)
+            .frame
+            .variables
+            .iter()
             .map(|(_, v)| *v)
             .collect::<Vec<_>>();
-    
+
         v.into_iter().for_each(|v| gc.unroot(v));
 
         // gc.get(stack).frame.variables.iter()
-        
+
         // let stack = gc.rooted(Stack { frame: Frame { variables }, up: None });
         Env { gc, stack }
     }
@@ -409,7 +445,7 @@ impl Env {
             maybe_stack = stack.up;
         }
         false
-    }    
+    }
 
     fn forget<'a>(&mut self, name: &str) -> bool {
         let mut maybe_stack = Some(self.stack);
@@ -421,19 +457,19 @@ impl Env {
             maybe_stack = stack.up;
         }
         false
-    }   
+    }
 
     // Roots result
     pub fn eval_cmd(&mut self, cmd: &syntax::Command) -> Result {
         let [head, tail @ ..] = &cmd.0[..] else {
             panic!();
         };
-    
+
         // lookup if string
         // otherwise eval expr
         let head = match head {
             Expr::String(string) => {
-                let Some(value)= self.lookup(string) else {
+                let Some(value) = self.lookup(string) else {
                     return Err(vec!["lookup failed".into()]);
                 };
                 // need to root so doesn't disappear during eval? idk.
@@ -446,7 +482,7 @@ impl Env {
         if let Value::Lazy(l) = self.gc.get(head) {
             let result = l(self, tail);
             self.gc.unroot(head);
-            return result
+            return result;
         }
 
         let mut tail_values = Vec::new();
@@ -454,7 +490,7 @@ impl Env {
         for e in tail {
             // all rooted, need to unroot.
             // want to be lazier?
-            
+
             let v = self.eval_expr(e)?;
 
             if let Value::Throw(_) = self.gc.get(v) {
@@ -469,6 +505,68 @@ impl Env {
         }
 
         match self.gc.get(head) {
+            // Borrow checker moment.
+            Value::Map(_) => {
+                /*
+                    map get k
+                    map set k v
+                    map del k
+                    map has k
+                */
+                let [command, ref rest @ ..] = tail_values[..] else {
+                    return Err(vec!["map: <command> ...".into()]);
+                };
+                let Value::String(command) = self.gc.get(command) else {
+                    return Err(vec!["map: <command: string> ...".into()]);
+                };
+                match command.as_str() {
+                    "get" => {
+                        let [k] = rest else {
+                            return Err(vec!["map get <key>".into()]);
+                        };
+                        let Value::Map(map) = self.gc.get_mut(head) else { unreachable!() };
+                        let Some(&v) = map.get(k) else {
+                            return Err(vec!["map get: key not found".into()]);
+                        };
+                        self.gc.unroot(head);
+                        for r in tail_values { self.gc.unroot(r); }
+                        // Need to root v because it's always done.
+                        self.gc.root(v);
+                        return Ok(v);
+                    }
+                    "del" => {
+                        let [k] = rest else {
+                            return Err(vec!["map del <key>".into()]);
+                        };
+                        let Value::Map(map) = self.gc.get_mut(head) else { unreachable!() };
+                        map.remove(k);
+                        self.gc.unroot(head);
+                        for r in tail_values { self.gc.unroot(r); }
+                        return Ok(self.gc.rooted(Value::String("ok".into())))
+                    }
+                    "has" => {
+                        let [k] = rest else {
+                            return Err(vec!["map has <key>".into()]);
+                        };
+                        let Value::Map(map) = self.gc.get_mut(head) else { unreachable!() };
+                        let has = map.contains_key(k);
+                        self.gc.unroot(head);
+                        for r in tail_values { self.gc.unroot(r) }
+                        return Ok(self.gc.rooted(Value::String(if has { "true" } else { "false" }.into())))
+                    }
+                    "set" => {
+                        let [k, v] = rest else {
+                            return Err(vec!["map set <key> <value>".into()]);
+                        };
+                        let Value::Map(map) = self.gc.get_mut(head) else { unreachable!() };
+                        map.insert(*k,* v);
+                        self.gc.unroot(head);
+                        for r in tail_values { self.gc.unroot(r) };
+                        return Ok(self.gc.rooted(Value::String("ok".into())))
+                    }
+                    _ => return Err(vec!["map: unknown command".into()]),
+                }                    
+            }
             // errors should ideally cause unroots to happen?
             Value::String(_) => Err(vec!["cmd's fn must not be a string".into()]),
             Value::Builtin(f) => {
@@ -482,9 +580,7 @@ impl Env {
             }
             // stack should be reachable via closure.
             Value::Closure { code, stack } => {
-                let result = self.eval_closure(
-                    code.clone(), *stack, &tail_values
-                );
+                let result = self.eval_closure(code.clone(), *stack, &tail_values);
                 for e in tail_values {
                     self.gc.unroot(e);
                 }
@@ -496,7 +592,7 @@ impl Env {
             Value::Throw(_) => {
                 // let value = *value;
                 for e in tail_values {
-                    self.gc.unroot(e);                    
+                    self.gc.unroot(e);
                 }
                 Ok(head)
             }
@@ -505,17 +601,24 @@ impl Env {
     }
 
     // No idea if this is correct.
-    fn eval_closure(&mut self, commands: Rc<syntax::Commands>, stack: Gc<Stack>, args: &Vec<Gc<Value>>) -> Result {    
+    fn eval_closure(
+        &mut self,
+        commands: Rc<syntax::Commands>,
+        stack: Gc<Stack>,
+        args: &Vec<Gc<Value>>,
+    ) -> Result {
         let old_stack = self.stack;
 
         // I think stack should be reachable via closure so it should be fine to use it.
-    
+
         // Append args as new stack frame.
 
         // Probably doesn't need to be rooted?
         // Well, maybe # should be? But isn't it reachable from the closure?
         let new_stack = self.gc.rooted(Stack {
-            frame: Frame { variables: HashMap::new() },
+            frame: Frame {
+                variables: HashMap::new(),
+            },
             up: Some(stack),
         });
 
@@ -525,7 +628,7 @@ impl Env {
         let new_stack_value = self.gc.get_mut(new_stack);
 
         new_stack_value.frame.variables.insert("#".into(), len);
-        
+
         for (i, &arg) in args.iter().enumerate() {
             // Start from $1. Mostly arbitrary.
             let str = format!("{}", i + 1);
@@ -551,8 +654,10 @@ impl Env {
                 // Not sure if rooting stack makes a difference here.
 
                 let new_stack = self.gc.rooted(Stack {
-                    frame: Frame { variables: HashMap::new() },
-                    up: Some(self.stack)
+                    frame: Frame {
+                        variables: HashMap::new(),
+                    },
+                    up: Some(self.stack),
                 });
 
                 let old_stack = self.stack;
@@ -574,19 +679,17 @@ impl Env {
                 self.gc.unroot(new_stack);
                 // self.gc.root(old_stack);
                 self.stack = old_stack;
-                
+
                 if let Some(value) = result {
                     Ok(value)
                 } else {
                     Ok(self.gc.rooted(Value::String("ok".into())))
                 }
             }
-            Expr::Closure(commands) => {
-                Ok(self.gc.rooted(Value::Closure {
-                    code: commands.clone(),
-                    stack: self.stack,
-                }))
-            }
+            Expr::Closure(commands) => Ok(self.gc.rooted(Value::Closure {
+                code: commands.clone(),
+                stack: self.stack,
+            })),
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::{io::stdin, rc::Rc};
+use std::io::stdin;
 
 use eval::{Env, Value};
 use syntax::Expr;
@@ -9,8 +9,11 @@ mod grammar;
 mod print;
 mod syntax;
 
+#[cfg(test)]
+mod tests;
+
 fn chars() -> impl Iterator<Item = char> {
-    stdin().lines().flat_map(|l| l).flat_map(|s| {
+    stdin().lines().map_while(Result::ok).flat_map(|s| {
         let mut chars = Vec::new();
         for c in s.chars() {
             chars.push(c);
@@ -20,272 +23,10 @@ fn chars() -> impl Iterator<Item = char> {
     })
 }
 
-#[test]
-fn test_parse_command() {
-    let mut env = eval::Env::new(gc::Strategy::Aggressive);
-    let mut input = syntax::input_from_str("val 3");
-    let command = grammar::command(&mut input).unwrap();
-    let command = syntax::command_from_grammar(&command);
-    println!("{command}");
-    let output = env.eval_cmd(&command).unwrap();
-    // let output = env.eval_expr(
-    //     &Expr::String("3".into())
-    // ).unwrap();
-    let Value::String(s) = env.gc.get(output) else {
-        panic!()
-    };
-    assert_eq!(s, "3");
-}
-
-#[test]
-fn test_gc_expr() {
-    let mut env = eval::Env::new(gc::Strategy::Aggressive);
-    let output = env.eval_expr(
-        &Expr::String("3".into())
-    ).unwrap();
-    let Value::String(s) = env.gc.get(output) else {
-        panic!()
-    };
-    assert_eq!(s, "3");
-}
-
-#[test]
-fn test_gc() {
-    let mut env = eval::Env::new(gc::Strategy::Aggressive);
-    let mut input = syntax::input_from_str("
-        val 3
-    ");
-    let commands = grammar::file(&mut input).unwrap();
-    let commands = syntax::command_from_grammar(&commands[0]);
-    let output = env.eval_cmd(&commands).unwrap();
-    let Value::String(s) = env.gc.get(output) else {
-        panic!()
-    };
-    assert_eq!(s, "3");
-}
-
-#[test]
-fn test_closure_args() {
-    let mut env = eval::Env::new(gc::Strategy::Aggressive);
-    let mut input = syntax::input_from_str("
-        var double (add $1 $1)
-        var 1 20
-        double 3
-    ");
-    let commands = grammar::file(&mut input).unwrap();
-    let commands = syntax::commands_from_grammar(&commands);
-    let output = env
-        .eval_expr(&syntax::Expr::Block(Rc::new(commands)))
-        .unwrap();
-    let Value::String(s) = env.gc.get(output) else {
-        panic!()
-    };
-    assert_eq!(s, "6");
-}
-
-#[test]
-fn test_precise_gc() {
-    let commands = {
-        let string = "
-            val 3
-        ";
-        let mut input = syntax::input_from_str(string);
-        let commands = grammar::file(&mut input).unwrap();
-        let commands = syntax::commands_from_grammar(&commands);
-        commands
-    };
-    let command = {
-        let string = "val 3";
-        let mut input = syntax::input_from_str(string);
-        let command = grammar::command(&mut input).unwrap();
-        let command = syntax::command_from_grammar(&command);
-        command
-    };
-
-    let mut env = Env::new(gc::Strategy::Checking);
-    // env.eval_expr(&syntax::Expr::Block(Rc::new(commands)));
-    let id = env.eval_cmd(&command).unwrap();
-    env.gc.unroot(id);
-    env.gc.unroot(env.stack);
-    env.gc.collect();
-    println!("roots: {}", env.gc.roots.len());
-    println!("objects: {}", env.gc.map.iter().fold(0, |a, b| {
-        if b.1.alive {
-            a + 1
-        } else {
-            a
-        }
-    }));
-}
-
-#[test]
-fn test_precise_catch_loop_throw() {
-    let commands = {
-        let string = "
-            var count 0
-            val $(catch $(
-                loop $(
-                    println $count
-                    set count $(+ 1 $count)
-                    $(if $(= $count 10) (throw $count) ())
-                )
-            ))
-        ";
-        let mut input = syntax::input_from_str(string);
-        let commands = grammar::file(&mut input).unwrap();
-        let commands = syntax::commands_from_grammar(&commands);
-        commands
-    };
-
-    let mut env = Env::new(gc::Strategy::Checking);
-    let id = env.eval_expr(&syntax::Expr::Block(Rc::new(commands))).unwrap();
-    // let id = env.eval_cmd(&command).unwrap();
-    let Value::String(string) = env.gc.get(id) else { panic!() };
-    assert_eq!(string, "10");
-    env.gc.unroot(id);
-    env.gc.unroot(env.stack);
-    env.gc.collect();
-    println!("roots: {}", env.gc.roots.len());
-    println!("objects: {}", env.gc.map.iter().fold(0, |a, b| {
-        if b.1.alive {
-            a + 1
-        } else {
-            a
-        }
-    }));
-}
-
-#[test]
-fn test_factorial() {
-    let string = "
-        var factorial (
-            var x $1
-
-            var choice $(
-                if $(= $x 0) (val 1) (
-                    * $x $(factorial $(+ $x -1))
-                )
-            )
-
-            choice
-        )
-
-        factorial 5
-    ";
-    let mut input = syntax::input_from_str(string);
-    let commands = grammar::file(&mut input).unwrap();
-    let commands = syntax::commands_from_grammar(&commands);
-    println!("commands:");
-    for command in &commands.0 {
-        println!("{command}")
-    }
-    let mut env = eval::Env::new(gc::Strategy::Checking);
-    let output = env
-        .eval_expr(&syntax::Expr::Block(Rc::new(commands)))
-        .unwrap();
-    let Value::String(s) = env.gc.get(output) else {
-        panic!()
-    };
-    assert_eq!(s, "120");
-    env.gc.unroot(output);
-    env.gc.unroot(env.stack);
-    env.gc.collect();
-    println!("roots: {}", env.gc.roots.len());
-    println!("objects: {}", env.gc.map.iter().fold(0, |a, b| {
-        if b.1.alive {
-            a + 1
-        } else {
-            a
-        }
-    }));
-}
-
-#[test]
-fn test_closure() {
-    let string = "
-        # This is a comment.
-        # The second line of a comment.
-        var counter (
-            var count 0
-            var count 0
-            val (
-                set count $(inc $count)
-                get count
-            )
-        )
-        var c1 $(counter)
-        c1
-        var c2 $(counter)
-        + $(c2) $(c1)
-
-        # File is allowed to have trailing comments, apparently.
-    ";
-    let mut input = syntax::input_from_str(string);
-    let commands = grammar::file(&mut input).unwrap();
-    let commands = syntax::commands_from_grammar(&commands);
-    println!("commands:");
-    for command in &commands.0 {
-        println!("{command}")
-    }
-    let mut env = eval::Env::new(gc::Strategy::Checking);
-    let output = env
-        .eval_expr(&syntax::Expr::Block(Rc::new(commands)))
-        .unwrap();
-    let Value::String(s) = env.gc.get(output) else {
-        panic!()
-    };
-    assert_eq!(s, "3");
-    env.gc.unroot(output);
-    env.gc.unroot(env.stack);
-    env.gc.collect();
-    println!("roots: {}", env.gc.roots.len());
-    println!("objects: {}", env.gc.map.iter().fold(0, |a, b| {
-        if b.1.alive {
-            a + 1
-        } else {
-            a
-        }
-    }));
-}
-
-#[test]
-fn test_eval() {
-    let mut env = eval::Env::new(gc::Strategy::Checking);
-    // let stack = env.gc.get_mut(env.stack);
-    // stack.0.push(eval::Frame { variables: HashMap::new() });
-    let mut input = syntax::input_from_str(
-        "
-            var var-name x
-            var $var-name 1
-            val $(
-                set x 2
-                set x $(inc $x)
-                var tmp hello
-                del tmp
-                val $(
-                    var x 10
-                    set x 4
-                )
-                get x
-            )
-            )
-        ",
-    );
-    let commands = grammar::multiline_commands(&mut input).unwrap();
-    let commands = syntax::commands_from_grammar(&commands);
-    let result = env
-        .eval_expr(&syntax::Expr::Block(Rc::new(commands)))
-        .unwrap();
-    match env.gc.get(result) {
-        Value::String(s) => assert_eq!(s, "3"),
-        _ => unreachable!(),
-    }
-}
-
 fn shell() {
     let mut iter = (Box::new(chars()) as Box<dyn Iterator<Item = char>>).peekable();
 
-    let mut env = eval::Env::new(gc::Strategy::Default);
+    let mut env = eval::Env::new(gc::Strategy::Disabled);
     // {
     //     let mut stack = env.gc.get_mut(env.stack);
     //     stack.0.push(eval::Frame {
@@ -320,6 +61,7 @@ fn shell() {
                         println!("<throw ...>");
                     },
                     Value::Lazy(_) => println!("<lazy>"),
+                    Value::Map(_) => println!("<map>"),
                 },
             };
             println!();
