@@ -83,7 +83,8 @@ pub fn input_from_str(s: &str) -> Input {
 #[test]
 #[ignore]
 fn a_test() {
-    let mut input = input_from_str("
+    let mut input = input_from_str(
+        "
         # Hello, world
         # Very cool
         a b c
@@ -93,6 +94,7 @@ fn a_test() {
         )
         # This is hack to end input.
         )
-    ");
+    ",
+    );
     dbg!(grammar::multiline_commands(&mut input));
 }

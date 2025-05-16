@@ -7,7 +7,7 @@ name = "gc"
 version = "0.1.0"
 
 [[package]]
-name = "my-shell"
+name = "shell"
 version = "0.1.0"
 dependencies = [
  "gc",

@@ -1,8 +1,8 @@
 use std::io::stdin;
 
-use eval::{Env, Value};
+use interpreter::{Callable, Env, Value};
 
-mod eval;
+mod interpreter;
 // mod gc;
 mod grammar;
 mod print;
@@ -55,11 +55,11 @@ fn shell() {
                 Ok(v) => match env.gc.get(v) {
                     Value::String(s) => println!("{s}"),
                     Value::Builtin(_f) => println!("<built-in fn>"),
-                    Value::Closure { .. } => println!("<closure>"),
-                    Value::Throw(_) => {
+                    Value::Callable(Callable::Closure { .. }) => println!("<closure>"),
+                    Value::Exception(_) => {
                         println!("<throw ...>");
-                    },
-                    Value::Lazy(_) => println!("<lazy>"),
+                    }
+                    Value::LazyBuiltin(_) => println!("<lazy>"),
                     Value::Map(_) => println!("<map>"),
                 },
             };
@@ -90,11 +90,11 @@ fn shell() {
 }
 
 fn dofile(file: String) {
-    let mut env = eval::Env::new(gc::Strategy::Default);
+    let mut env = interpreter::Env::new(gc::Strategy::Default);
     let mut input = syntax::input_from_str(&file);
     let Some(file) = grammar::file(&mut input) else {
         println!("Syntax error");
-        return
+        return;
     };
     let commands = syntax::commands_from_grammar(&file);
     for command in commands.0 {
@@ -104,7 +104,7 @@ fn dofile(file: String) {
                 for e in error {
                     println!("{e}")
                 }
-                return
+                return;
             }
             Ok(value) => {
                 env.gc.unroot(value);
@@ -119,7 +119,7 @@ fn main() {
     if let Some(path) = args.get(1) {
         let Ok(file) = std::fs::read_to_string(path) else {
             println!("Failed to read path");
-            return
+            return;
         };
         dofile(file);
     } else {

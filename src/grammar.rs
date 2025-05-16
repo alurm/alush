@@ -4,7 +4,7 @@ pub type Command = Vec<Expr>;
 use crate::syntax::Input;
 
 fn peek(i: &mut Input) -> Option<char> {
-    i.peek().map(|&u| u)
+    i.peek().copied()
 }
 
 fn accept(i: &mut Input, b: char) -> bool {
@@ -12,15 +12,11 @@ fn accept(i: &mut Input, b: char) -> bool {
         i.next();
         return true;
     }
-    return false;
+    false
 }
 
 fn expect(i: &mut Input, b: char) -> Option<()> {
-    if accept(i, b) {
-        Some(())
-    } else {
-        None
-    }
+    if accept(i, b) { Some(()) } else { None }
 }
 
 fn not(i: &mut Input, bs: &str) -> bool {
@@ -33,42 +29,36 @@ fn not(i: &mut Input, bs: &str) -> bool {
         i.next();
         return true;
     }
-    return false;
+    false
 }
 
 #[derive(Debug)]
 pub enum Expr {
-    String {
-        dollar: bool,
-        value: String,
-    },
-    Commands {
-        dollar: bool,
-        value: Commands,
-    }
+    String { dollar: bool, value: String },
+    Commands { dollar: bool, value: Commands },
 }
 
 fn string(i: &mut Input) -> Option<String> {
     if accept(i, '\'') {
-        return Some(quoted_string(i)?);
+        Some(quoted_string(i)?)
     } else {
         let mut s = String::new();
 
         loop {
             match peek(i) {
                 None | Some(' ' | '\n' | ')' | '\t') => {
-                    if s.len() == 0 {
+                    if s.is_empty() {
                         // Bad start of string.
                         return None;
                     } else {
                         return Some(s);
                     }
-                },
+                }
                 Some(b) => {
                     i.next();
                     s.push(b);
-                },
-            }    
+                }
+            }
         }
     }
 }
@@ -83,13 +73,11 @@ fn quoted_string(i: &mut Input) -> Option<String> {
             } else {
                 return Some(s);
             }
+        } else if let Some(b) = i.next() {
+            s.push(b);
         } else {
-            if let Some(b) = i.next() {
-                s.push(b);
-            } else {
-                // Unclosed quoted string.
-                return None;
-            }
+            // Unclosed quoted string.
+            return None;
         }
     }
 }
@@ -98,48 +86,38 @@ fn expr(i: &mut Input) -> Option<Expr> {
     let dollar = accept(i, '$');
 
     if accept(i, '(') {
-        return Some(Expr::Commands { dollar: dollar, value: commands(i)? });
+        Some(Expr::Commands {
+            dollar,
+            value: commands(i)?,
+        })
     } else {
-        return Some(Expr::String { dollar: dollar, value: string(i)? });
+        Some(Expr::String {
+            dollar,
+            value: string(i)?,
+        })
     }
 }
 
 fn commands(i: &mut Input) -> Option<Commands> {
     if accept(i, '\n') {
-        return multiline_commands(i);
+        multiline_commands(i)
     } else {
-        return inline_command(i);
+        inline_command(i)
     }
 }
-
-// // Interestingly using shell makes trailing comments not allowed.
-// pub fn file(i: &mut Input) -> Option<Commands> {
-//     let mut commands = Commands::new();
-//     loop {
-//         if let None = peek(i) {
-//             return Some(commands)
-//         }
-//         commands.push(shell(i)?)
-//     }
-// }
 
 pub fn file(i: &mut Input) -> Option<Commands> {
     let mut commands = Commands::new();
     loop {
-        loop {
-            match peek(i) {
-                Some(' ') | Some('\t') => {
-                    i.next();
-                },
-                _ => break,
-            }
+        while let Some(' ' | '\t') = peek(i) {
+            i.next();
         }
-        if let None = peek(i) {
-            return Some(commands)
-        }
-        else if accept(i, '#') { comment(i)? }
-        else if accept(i, '\n') {}
-        else {
+        if peek(i).is_none() {
+            return Some(commands);
+        } else if accept(i, '#') {
+            comment(i)?
+        } else if accept(i, '\n') {
+        } else {
             commands.push(command(i)?);
             expect(i, '\n')?;
         }
@@ -149,20 +127,15 @@ pub fn file(i: &mut Input) -> Option<Commands> {
 pub fn multiline_commands(i: &mut Input) -> Option<Commands> {
     let mut commands = Commands::new();
     loop {
-        loop {
-            match peek(i) {
-                Some(' ') | Some('\t') => {
-                    i.next();
-                },
-                _ => break,
-            }
+        while let Some(' ' | '\t') = peek(i) {
+            i.next();
         }
         if accept(i, ')') {
             return Some(commands);
-        }
-        else if accept(i, '#') { comment(i)? }
-        else if accept(i, '\n') {}
-        else {
+        } else if accept(i, '#') {
+            comment(i)?
+        } else if accept(i, '\n') {
+        } else {
             commands.push(command(i)?);
             expect(i, '\n')?;
         }
@@ -180,9 +153,10 @@ pub fn shell(i: &mut Input) -> Option<Command> {
         while let Some(' ' | '\t') = peek(i) {
             i.next();
         }
-        if accept(i, '#') { comment(i)? }
-        else if accept(i, '\n') {}
-        else {
+        if accept(i, '#') {
+            comment(i)?
+        } else if accept(i, '\n') {
+        } else {
             let c = command(i)?;
             expect(i, '\n')?;
             return Some(c);
@@ -192,25 +166,28 @@ pub fn shell(i: &mut Input) -> Option<Command> {
 
 fn inline_command(i: &mut Input) -> Option<Commands> {
     if accept(i, ')') {
-        return Some(Commands::new());
+        Some(Commands::new())
     } else {
         let commands = vec![command(i)?];
 
         expect(i, ')')?;
 
-        return Some(commands);
+        Some(commands)
     }
 }
 
 fn multiline_command_part(i: &mut Input) -> Option<Vec<Expr>> {
     let mut exprs = Vec::new();
     loop {
-        while let Some(' ' | '\t') = peek(i) { i.next(); }
+        while let Some(' ' | '\t') = peek(i) {
+            i.next();
+        }
         if accept(i, ';') {
             return Some(exprs);
         } else if accept(i, '#') {
             comment(i);
-        } else if accept(i, '\n') {}
+        } else if accept(i, '\n') {
+        }
         // We could've called back to command here to allow for recursion.
         // But it's not clear that it's better.
         else {
@@ -237,5 +214,5 @@ pub fn command(i: &mut Input) -> Option<Command> {
         }
     }
 
-    return Some(command);
+    Some(command)
 }

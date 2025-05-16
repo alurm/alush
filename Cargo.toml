@@ -2,7 +2,7 @@
 members = ["gc"]
 
 [package]
-name = "my-shell"
+name = "shell"
 version = "0.1.0"
 edition = "2024"
 

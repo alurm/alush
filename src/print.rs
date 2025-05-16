@@ -53,7 +53,7 @@ impl Expr {
                         tab(to, depth - 1);
                     }
                 }
-                depth -= 1;
+                // depth -= 1;
                 to.push(')');
             }
         }
@@ -70,8 +70,7 @@ impl std::fmt::Display for Command {
 
 #[test]
 fn test_command_from_grammar() {
-    let original = 
-    "a b (
+    let original = "a b (
         c d
         e f
         (
@@ -87,7 +86,7 @@ fn test_command_from_grammar() {
     )";
 
     let one = {
-        let mut input = crate::syntax::input_from_str(&original);
+        let mut input = crate::syntax::input_from_str(original);
         let grammar = crate::grammar::command(&mut input).unwrap();
         let syntax = crate::syntax::command_from_grammar(&grammar);
         let mut string = String::new();

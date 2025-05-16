@@ -1,9 +1,10 @@
 /// A garbage collector.
-
 // The idea in this iteration is to use std::any::Any.
-
 use std::{
-    any::Any, collections::{HashMap, HashSet, VecDeque}, marker::PhantomData, sync::Mutex
+    any::Any,
+    collections::{HashMap, HashSet, VecDeque},
+    marker::PhantomData,
+    sync::Mutex,
 };
 
 impl<T: Trace> Clone for Gc<T> {
@@ -87,9 +88,9 @@ impl Heap {
             strategy,
             id: {
                 let mut guard = COUNTER.lock().unwrap();
-                *guard = *guard + 1;
+                *guard += 1;
                 *guard
-            }
+            },
         }
     }
 
@@ -121,22 +122,27 @@ impl Heap {
 
         self.map.insert(id, object);
 
-        let object = Gc { id, phantom_data: PhantomData };
-
-        object
+        Gc {
+            id,
+            phantom_data: PhantomData,
+        }
     }
 
     fn get_object(&self, id: Id) -> &Object {
         assert!(self.id == id.heap);
         let object = self.map.get(&id).unwrap();
-        if !object.alive { panic!() };
+        if !object.alive {
+            panic!()
+        };
         object
     }
 
     fn get_mut_object(&mut self, id: Id) -> &mut Object {
         assert!(self.id == id.heap);
         let object = self.map.get_mut(&id).unwrap();
-        if !object.alive { panic!() };
+        if !object.alive {
+            panic!()
+        };
         object
     }
 
@@ -161,12 +167,13 @@ impl Heap {
     }
 
     /// Prevents a [Gc] from being collected.
-    pub fn root<T: Trace>(&mut self, id: Gc<T>) {
+    pub fn root<T: Trace>(&mut self, id: Gc<T>) -> Gc<T> {
         if let Some(value) = self.roots.get_mut(&id.id) {
             *value += 1;
         } else {
             self.roots.insert(id.id, 1);
-        }
+        };
+        id
     }
 
     /// Allows a [Gc] to be collected, if discovered to be unreachable.
@@ -190,7 +197,7 @@ impl Heap {
 
         let mut queue = VecDeque::new();
 
-        for (&root, _) in &self.roots {
+        for &root in self.roots.keys() {
             queue.push_back(root);
             // queue.push_back(self.map.get_mut(root).unwrap());
         }
@@ -209,11 +216,9 @@ impl Heap {
 
         // If we are [Aggressive] or [Checking], don't actually delete objects.
         match self.strategy {
-            Strategy::Default | Strategy::Disabled => {
-                self.map.retain(|_, object| object.reachable)
-            }
+            Strategy::Default | Strategy::Disabled => self.map.retain(|_, object| object.reachable),
             Strategy::Aggressive | Strategy::Checking => {
-                for (_, object) in &mut self.map {
+                for object in self.map.values_mut() {
                     if !object.reachable {
                         object.alive = false;
                     }
@@ -242,7 +247,7 @@ impl<T: Trace> Trace for Option<T> {
 
 #[cfg(test)]
 mod test {
-    use super::{Gc, Heap, Id, Trace, Strategy};
+    use super::{Gc, Heap, Id, Strategy, Trace};
 
     enum Tree<T: 'static> {
         Leaf(T),
@@ -260,10 +265,11 @@ mod test {
 
     fn mutate(gc: &mut Heap, tree: Gc<Tree<&str>>) {
         match gc.get_mut(tree) {
-            Tree::Leaf(msg) => match *msg {
-                "hello" => *msg = "goodbye",
-                _ => (),
-            },
+            Tree::Leaf(msg) => {
+                if *msg == "hello" {
+                    *msg = "goodbye"
+                }
+            }
             Tree::Branch(l, r) => {
                 let (l, r) = (*l, *r);
                 mutate(gc, l);
@@ -291,8 +297,6 @@ mod test {
 
     #[test]
     fn gc_cycle_collection_terminates() {
-        let mut gc = Heap::new(Strategy::Aggressive);
-
         struct Cycle(Option<Gc<Cycle>>);
 
         impl Trace for Cycle {
