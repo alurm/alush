@@ -1,7 +1,8 @@
 use std::{collections::HashMap, rc::Rc};
 
+use gc::{self, Gc};
+
 use crate::{
-    gc::{self, Gc},
     syntax::{self, Expr},
 };
 

@@ -1,10 +1,9 @@
 use std::io::stdin;
 
 use eval::{Env, Value};
-use syntax::Expr;
 
 mod eval;
-mod gc;
+// mod gc;
 mod grammar;
 mod print;
 mod syntax;
@@ -26,7 +25,7 @@ fn chars() -> impl Iterator<Item = char> {
 fn shell() {
     let mut iter = (Box::new(chars()) as Box<dyn Iterator<Item = char>>).peekable();
 
-    let mut env = eval::Env::new(gc::Strategy::Disabled);
+    let mut env = Env::new(gc::Strategy::Disabled);
     // {
     //     let mut stack = env.gc.get_mut(env.stack);
     //     stack.0.push(eval::Frame {

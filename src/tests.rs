@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use crate::syntax::Expr;
+
 use super::*;
 
 #[test]

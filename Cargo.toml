@@ -1,6 +1,10 @@
+[workspace]
+members = ["gc"]
+
 [package]
-name = "shell"
+name = "my-shell"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+gc = { path = "gc" }
