@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, env::var, hash::Hash, rc::Rc};
 
 use gc::{self, Gc};
 
@@ -15,11 +15,14 @@ pub enum Callable {
     },
 }
 
+type Builtin = fn(&mut Env, args: &[Gc<Value>]) -> Result;
+type LazyBuiltin = fn(&mut Env, args: &[syntax::Expr]) -> Result;
+
 pub enum Value {
     String(String),
-    Builtin(fn(&mut Env, args: &[Gc<Value>]) -> Result),
+    Builtin(Builtin),
     Callable(Callable),
-    LazyBuiltin(fn(&mut Env, args: &[syntax::Expr]) -> Result),
+    LazyBuiltin(LazyBuiltin),
     Exception(Gc<Value>),
     Map(HashMap<Gc<Value>, Gc<Value>>),
 }
@@ -108,63 +111,60 @@ impl Env {
     pub fn new(strategy: gc::Strategy) -> Self {
         let mut gc = gc::Heap::new(strategy);
 
-        let builtins = [
-            (
-                "set",
-                builtins::builtin_set as fn(&mut Env, &[Gc<Value>]) -> Result,
-            ),
-            ("get", builtins::builtin_get),
-            ("val", builtins::builtin_val),
-            ("var", builtins::builtin_var),
-            ("del", builtins::builtin_del),
-            ("inc", builtins::builtin_inc),
-            ("+", builtins::builtin_add),
-            ("*", builtins::builtin_mul),
-            ("if", builtins::builtin_if),
-            ("=", builtins::builtin_eq),
-            ("..", builtins::builtin_concat),
-            ("!=", builtins::builtin_not_eq),
-            ("throw", builtins::builtin_throw),
-            ("println", builtins::builtin_println),
-            ("map", builtins::builtin_map),
+        let builtins: &[(_, Builtin)] = &[
+            ("set", builtins::set),
+            ("get", builtins::get),
+            ("val", builtins::val),
+            ("var", builtins::var),
+            ("del", builtins::del),
+            ("inc", builtins::inc),
+            ("+", builtins::add),
+            ("*", builtins::mul),
+            ("if", builtins::cond),
+            ("=", builtins::equal),
+            ("..", builtins::concat),
+            ("!=", builtins::not_equal),
+            ("throw", builtins::throw),
+            ("println", builtins::println),
+            ("map", builtins::map),
         ];
 
-        let builtins = builtins.map(|(k, v)| (k.into(), gc.rooted(Value::Builtin(v))));
+        let lazy_builtins: &[(_, LazyBuiltin)] = &[
+            ("repeat", builtins::repeat),
+            ("catch", builtins::catch),
+        ];
 
-        // Annoying clone here.
-        let mut variables = HashMap::from(builtins.clone());
+        let mut variables = Vec::new();
 
-        let lazy_loop = gc.rooted(Value::LazyBuiltin(builtins::lazy_loop));
-        variables.insert("loop".into(), lazy_loop);
-        variables.insert(
-            "catch".into(),
-            gc.rooted(Value::LazyBuiltin(builtins::lazy_catch)),
+        variables.extend(
+            builtins
+                .iter()
+                .map(|(k, v)| ((*k).into(), gc.rooted(Value::Builtin(*v)))),
         );
 
-        // variables.insert("loop", );
+        variables.extend(
+            lazy_builtins
+                .iter()
+                .map(|(k, v)| ((*k).into(), gc.rooted(Value::LazyBuiltin(*v)))),
+        );
+
+        let variables = HashMap::from_iter(variables);
 
         let stack = gc.rooted(Stack {
             frame: Frame { variables },
             up: None,
         });
 
-        // builtins.iter().for_each(|(_, v)| {
-        //     gc.unroot(*v);
-        // });
-
-        let v = gc
+        gc
             .get(stack)
             .frame
             .variables
             .values()
             .copied()
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+            .into_iter()
+            .for_each(|var| gc.unroot(var));
 
-        v.into_iter().for_each(|v| gc.unroot(v));
-
-        // gc.get(stack).frame.variables.iter()
-
-        // let stack = gc.rooted(Stack { frame: Frame { variables }, up: None });
         Env { gc, stack }
     }
 

@@ -139,7 +139,7 @@ fn test_precise_catch_loop_throw() {
         let string = "
             var count 0
             val $(catch $(
-                loop $(
+                repeat $(
                     println $count
                     set count $(+ 1 $count)
                     $(if $(= $count 10) (throw $count) ())
@@ -294,10 +294,10 @@ fn test_eval() {
     let result = env
         .eval_expr(&syntax::Expr::Block(Rc::new(commands)))
         .unwrap();
-    match env.gc.get(result) {
-        Value::String(s) => assert_eq!(s, "3"),
-        _ => unreachable!(),
-    }
+    let Value::String(s) = env.gc.get(result) else {
+        unreachable!()
+    };
+    assert_eq!(s, "3");
 }
 
 #[test]
@@ -308,9 +308,6 @@ fn test_parse_command() {
     let command = syntax::command_from_grammar(&command);
     println!("{command}");
     let output = env.eval_cmd(&command).unwrap();
-    // let output = env.eval_expr(
-    //     &Expr::String("3".into())
-    // ).unwrap();
     let Value::String(s) = env.gc.get(output) else {
         panic!()
     };

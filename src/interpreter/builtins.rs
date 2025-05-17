@@ -10,7 +10,7 @@ use crate::{
 /*
 General continuations seem to be unimplementable as of now, not enough reification.
 */
-pub(crate) fn lazy_catch(env: &mut Env, args: &[Expr]) -> Result {
+pub(crate) fn catch(env: &mut Env, args: &[Expr]) -> Result {
     let [ref body] = args[..] else {
         return Err(vec!["catch <body>".into()]);
     };
@@ -28,14 +28,14 @@ pub(crate) fn lazy_catch(env: &mut Env, args: &[Expr]) -> Result {
     }
 }
 
-pub(crate) fn builtin_throw(env: &mut Env, args: &[Gc<Value>]) -> Result {
+pub(crate) fn throw(env: &mut Env, args: &[Gc<Value>]) -> Result {
     let [throw] = args[..] else {
         return Err(vec!["throw <value>".into()]);
     };
     Ok(env.gc.rooted(Value::Exception(throw)))
 }
 
-pub(crate) fn builtin_concat(env: &mut Env, args: &[Gc<Value>]) -> Result {
+pub(crate) fn concat(env: &mut Env, args: &[Gc<Value>]) -> Result {
     let mut result = String::new();
     for &arg in args {
         let Value::String(s) = env.gc.get(arg) else {
@@ -46,7 +46,7 @@ pub(crate) fn builtin_concat(env: &mut Env, args: &[Gc<Value>]) -> Result {
     Ok(env.gc.rooted(Value::String(result)))
 }
 
-pub(crate) fn builtin_if(env: &mut Env, args: &[Gc<Value>]) -> Result {
+pub(crate) fn cond(env: &mut Env, args: &[Gc<Value>]) -> Result {
     let [cond, then, otherwise] = args[..] else {
         return Err(vec!["if <cond> <then> <else>".into()]);
     };
@@ -62,7 +62,7 @@ pub(crate) fn builtin_if(env: &mut Env, args: &[Gc<Value>]) -> Result {
     }
 }
 
-pub(crate) fn builtin_eq(env: &mut Env, args: &[Gc<Value>]) -> Result {
+pub(crate) fn equal(env: &mut Env, args: &[Gc<Value>]) -> Result {
     let [l, r] = args[..] else {
         return Err(vec!["= <a> <b>".into()]);
     };
@@ -76,7 +76,7 @@ pub(crate) fn builtin_eq(env: &mut Env, args: &[Gc<Value>]) -> Result {
     }
 }
 
-pub(crate) fn builtin_not_eq(env: &mut Env, args: &[Gc<Value>]) -> Result {
+pub(crate) fn not_equal(env: &mut Env, args: &[Gc<Value>]) -> Result {
     let [l, r] = args[..] else {
         return Err(vec!["= <a> <b>".into()]);
     };
@@ -90,7 +90,7 @@ pub(crate) fn builtin_not_eq(env: &mut Env, args: &[Gc<Value>]) -> Result {
     }
 }
 
-pub(crate) fn builtin_set(env: &mut Env, args: &[Gc<Value>]) -> Result {
+pub(crate) fn set(env: &mut Env, args: &[Gc<Value>]) -> Result {
     let [name, value] = args[..] else {
         return Err(vec!["set <name> <value>".into()]);
     };
@@ -103,7 +103,7 @@ pub(crate) fn builtin_set(env: &mut Env, args: &[Gc<Value>]) -> Result {
     Ok(env.gc.rooted(Value::String("ok".into())))
 }
 
-pub(crate) fn builtin_val(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
+pub(crate) fn val(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     let [value] = tail_values[..] else {
         return Err(vec!["val <value>".into()]);
     };
@@ -111,7 +111,7 @@ pub(crate) fn builtin_val(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     Ok(value)
 }
 
-pub(crate) fn builtin_println(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
+pub(crate) fn println(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     for value in tail_values {
         let Value::String(value) = env.gc.get(*value) else {
             return Err(vec!["println <:string>...".into()]);
@@ -123,7 +123,7 @@ pub(crate) fn builtin_println(env: &mut Env, tail_values: &[Gc<Value>]) -> Resul
     Ok(env.gc.rooted(Value::String("ok".into())))
 }
 
-pub(crate) fn builtin_var(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
+pub(crate) fn var(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     for chunk in tail_values.chunks(2) {
         let [name, value] = chunk else {
             return Err(vec!["var { <name> <value> }".into()]);
@@ -143,7 +143,7 @@ pub(crate) fn builtin_var(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     Ok(env.gc.rooted(Value::String("ok".into())))
 }
 
-pub(crate) fn builtin_get(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
+pub(crate) fn get(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     let [name] = tail_values[..] else {
         return Err(vec!["get <name>".into()]);
     };
@@ -158,7 +158,7 @@ pub(crate) fn builtin_get(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     Ok(value)
 }
 
-pub(crate) fn builtin_del(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
+pub(crate) fn del(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     let [name] = tail_values[..] else {
         return Err(vec!["del <name>".into()]);
     };
@@ -172,7 +172,7 @@ pub(crate) fn builtin_del(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     Ok(env.gc.rooted(Value::String("ok".into())))
 }
 
-pub(crate) fn builtin_inc(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
+pub(crate) fn inc(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     let [value] = tail_values[..] else {
         return Err(vec!["inc <number>".into()]);
     };
@@ -184,22 +184,17 @@ pub(crate) fn builtin_inc(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     };
     let str = format!("{}", n + 1);
     Ok(env.gc.rooted(Value::String(str)))
-    // let name = name.to_owned();
-    // if !env.forget(&name) {
-    //     return Err(vec!["del: var not found".into()]);
-    // };
-    // Ok(env.gc.alloc(Value::String("ok".into())))
 }
 
-pub(crate) fn builtin_add(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
+pub(crate) fn add(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     let mut sum = 0;
     for &value in tail_values {
         let value = env.gc.get(value);
         let Value::String(value) = value else {
-            return Err(vec!["add <number: string>...".into()]);
+            return Err(vec!["+ <number: string>...".into()]);
         };
         let Ok(number) = value.parse::<i32>() else {
-            return Err(vec!["add: parse failed".into()]);
+            return Err(vec!["+: parse failed".into()]);
         };
         sum += number;
     }
@@ -207,15 +202,15 @@ pub(crate) fn builtin_add(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     Ok(env.gc.rooted(Value::String(string)))
 }
 
-pub(crate) fn builtin_mul(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
+pub(crate) fn mul(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     let mut product = 1;
     for &value in tail_values {
         let value = env.gc.get(value);
         let Value::String(value) = value else {
-            return Err(vec!["add <number: string>...".into()]);
+            return Err(vec!["* <number: string>...".into()]);
         };
         let Ok(number) = value.parse::<i32>() else {
-            return Err(vec!["add: parse failed".into()]);
+            return Err(vec!["*: parse failed".into()]);
         };
         product *= number;
     }
@@ -223,7 +218,7 @@ pub(crate) fn builtin_mul(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     Ok(env.gc.rooted(Value::String(string)))
 }
 
-pub(crate) fn builtin_map(env: &mut Env, mut tail: &[Gc<Value>]) -> Result {
+pub(crate) fn map(env: &mut Env, mut tail: &[Gc<Value>]) -> Result {
     let mut map = HashMap::new();
     while let [k, v, rest @ ..] = tail {
         map.insert(*k, *v);
@@ -232,9 +227,9 @@ pub(crate) fn builtin_map(env: &mut Env, mut tail: &[Gc<Value>]) -> Result {
     Ok(env.gc.rooted(Value::Map(map)))
 }
 
-pub(crate) fn lazy_loop(env: &mut Env, args: &[Expr]) -> Result {
+pub(crate) fn repeat(env: &mut Env, args: &[Expr]) -> Result {
     let [ref body] = args[..] else {
-        return Err(vec!["loop <body>".into()]);
+        return Err(vec!["repeat <body>".into()]);
     };
     loop {
         let value = env.eval_expr(body)?;
