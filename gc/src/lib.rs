@@ -7,21 +7,19 @@ use std::{
     sync::Mutex,
 };
 
-impl<T: Trace> Clone for Gc<T> {
+impl<T: Collect> Clone for Gc<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T: Trace> Copy for Gc<T> {}
+impl<T: Collect> Copy for Gc<T> {}
 
 static COUNTER: Mutex<usize> = Mutex::new(0);
 
 pub struct Object {
-    value: Box<dyn Trace>,
+    value: Box<dyn Collect>,
     reachable: bool,
-    // Used by aggressive and checking strategies during access.
-    pub alive: bool,
 }
 
 /// An opaque id for a value in the GC's heap.
@@ -33,25 +31,25 @@ pub struct Id {
 }
 
 /// A trait to trace though a GC'ed value.
-pub trait Trace: Any {
+pub trait Collect: Any {
     fn trace(&self) -> Vec<Id>;
 }
 
 /// A handle to a value allocated in the GC's [Heap].
-pub struct Gc<T: Trace> {
+pub struct Gc<T: Collect> {
     pub id: Id,
     phantom_data: PhantomData<T>,
 }
 
-impl<T: Trace> PartialEq for Gc<T> {
+impl<T: Collect> PartialEq for Gc<T> {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
 
-impl<T: Trace> Eq for Gc<T> {}
+impl<T: Collect> Eq for Gc<T> {}
 
-impl<T: Trace> std::hash::Hash for Gc<T> {
+impl<T: Collect> std::hash::Hash for Gc<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
         self.phantom_data.hash(state);
@@ -94,13 +92,13 @@ impl Heap {
         }
     }
 
-    pub fn rooted<T: Trace>(&mut self, init: T) -> Gc<T> {
+    pub fn rooted<T: Collect>(&mut self, init: T) -> Gc<T> {
         let object = self.alloc(init);
         self.root(object);
         object
     }
 
-    pub fn alloc<T: Trace>(&mut self, init: T) -> Gc<T> {
+    pub fn alloc<T: Collect>(&mut self, init: T) -> Gc<T> {
         match self.strategy {
             Strategy::Aggressive | Strategy::Checking => self.collect(),
             Strategy::Default if self.map.len() == self.capacity => self.collect(),
@@ -117,7 +115,6 @@ impl Heap {
         let object = Object {
             value: Box::new(init),
             reachable: false,
-            alive: true,
         };
 
         self.map.insert(id, object);
@@ -131,23 +128,17 @@ impl Heap {
     fn get_object(&self, id: Id) -> &Object {
         assert!(self.id == id.heap);
         let object = self.map.get(&id).unwrap();
-        if !object.alive {
-            panic!()
-        };
         object
     }
 
     fn get_mut_object(&mut self, id: Id) -> &mut Object {
         assert!(self.id == id.heap);
         let object = self.map.get_mut(&id).unwrap();
-        if !object.alive {
-            panic!()
-        };
         object
     }
 
     /// Returns a shared reference to a value contained in a [Gc].
-    pub fn get<T: Trace>(&self, id: Gc<T>) -> &T {
+    pub fn get<T: Collect>(&self, id: Gc<T>) -> &T {
         let object = self.get_object(id.id);
         let it = &*object.value as &dyn Any;
         match it.downcast_ref::<T>() {
@@ -157,7 +148,7 @@ impl Heap {
     }
 
     /// Returns a mutable reference to a value contained in a [Gc].
-    pub fn get_mut<T: Trace>(&mut self, id: Gc<T>) -> &mut T {
+    pub fn get_mut<T: Collect>(&mut self, id: Gc<T>) -> &mut T {
         let object = self.get_mut_object(id.id);
         let it = &mut *object.value as &mut dyn Any;
         match it.downcast_mut::<T>() {
@@ -167,7 +158,7 @@ impl Heap {
     }
 
     /// Prevents a [Gc] from being collected.
-    pub fn root<T: Trace>(&mut self, id: Gc<T>) -> Gc<T> {
+    pub fn root<T: Collect>(&mut self, id: Gc<T>) -> Gc<T> {
         if let Some(value) = self.roots.get_mut(&id.id) {
             *value += 1;
         } else {
@@ -177,7 +168,7 @@ impl Heap {
     }
 
     /// Allows a [Gc] to be collected, if discovered to be unreachable.
-    pub fn unroot<T: Trace>(&mut self, id: Gc<T>) {
+    pub fn unroot<T: Collect>(&mut self, id: Gc<T>) {
         if let Some(value) = self.roots.get_mut(&id.id) {
             // assert!(*value != 0);
             *value -= 1;
@@ -204,7 +195,6 @@ impl Heap {
 
         while let Some(id) = queue.pop_front() {
             let object = self.get_mut_object(id);
-            // if object.reachable { continue }
             object.reachable = true;
             for id in object.value.trace() {
                 let object = self.get_mut_object(id);
@@ -214,18 +204,9 @@ impl Heap {
             }
         }
 
-        // If we are [Aggressive] or [Checking], don't actually delete objects.
-        match self.strategy {
-            Strategy::Default | Strategy::Disabled => self.map.retain(|_, object| object.reachable),
-            Strategy::Aggressive | Strategy::Checking => {
-                for object in self.map.values_mut() {
-                    if !object.reachable {
-                        object.alive = false;
-                    }
-                }
-            }
-        }
-
+        // Sweep.
+        self.map.retain(|_, object| object.reachable);
+    
         self.map.shrink_to_fit();
         self.roots.shrink_to_fit();
         self.map
@@ -235,7 +216,7 @@ impl Heap {
     }
 }
 
-impl<T: Trace> Trace for Option<T> {
+impl<T: Collect> Collect for Option<T> {
     fn trace(&self) -> Vec<Id> {
         if let Some(value) = self {
             value.trace()
@@ -247,14 +228,14 @@ impl<T: Trace> Trace for Option<T> {
 
 #[cfg(test)]
 mod test {
-    use super::{Gc, Heap, Id, Strategy, Trace};
+    use super::{Gc, Heap, Id, Strategy, Collect};
 
     enum Tree<T: 'static> {
         Leaf(T),
         Branch(Gc<Tree<T>>, Gc<Tree<T>>),
     }
 
-    impl<T> Trace for Tree<T> {
+    impl<T> Collect for Tree<T> {
         fn trace(&self) -> Vec<Id> {
             match self {
                 Tree::Leaf(_) => vec![],
@@ -299,7 +280,7 @@ mod test {
     fn gc_cycle_collection_terminates() {
         struct Cycle(Option<Gc<Cycle>>);
 
-        impl Trace for Cycle {
+        impl Collect for Cycle {
             fn trace(&self) -> Vec<Id> {
                 match self.0 {
                     None => vec![],

@@ -3,13 +3,78 @@ use std::collections::HashMap;
 use gc::Gc;
 
 use crate::{
-    interpreter::{Env, Result, Value},
+    interpreter::{self, Env, Result, Value},
     syntax::Expr,
 };
 
-/*
-General continuations seem to be unimplementable as of now, not enough reification.
-*/
+pub(crate) fn fail(_env: &mut Env, _args: &[Gc<Value>]) -> Result {
+    Err(vec!["fail".into()])
+}
+
+pub(crate) fn apply(env: &mut Env, args: &[Gc<Value>]) -> Result {
+    // Root once more since they'll be unrooted twice.
+    args.iter().for_each(|&arg| {
+        env.gc.root(arg);
+    });
+    let [fun, args @ ..] = args else {
+        return Err(vec!["apply <fn> <args>...".into()]);
+    };
+    env.apply_cmd(*fun, args)
+}
+
+pub(crate) fn unix(env: &mut Env, args: &[Gc<Value>]) -> Result {
+    let args: Vec<String> = args
+        .iter()
+        .map(|&arg| {
+            let Value::String(s) = env.gc.get(arg) else {
+                return Err(vec!["unix <string>...".into()]);
+            };
+            Ok(s.to_owned())
+        })
+        .collect::<Result<_>>()?;
+    let [head, rest @ ..] = &args[..] else {
+        return Err(vec!["unix cmd <string>...".into()]);
+    };
+    let mut command = std::process::Command::new(head);
+    command.stdout(std::process::Stdio::piped());
+    command.args(rest);
+    let process = command
+        .spawn()
+        .map_err(|err| vec!["unix: spawn:".into(), err.to_string()])?;
+    let output = process
+        .wait_with_output()
+        .map_err(|err| vec!["unix: wait:".into(), err.to_string()])?;
+    let string =
+        String::from_utf8(output.stdout).map_err(|_| vec!["unix: output is not UTF-8".into()])?;
+    Ok(env.gc.rooted(Value::String(string)))
+}
+
+pub(crate) fn lines(env: &mut Env, args: &[Gc<Value>]) -> Result {
+    let [arg] = args else {
+        return Err(vec!["lines <string>".into()]);
+    };
+    let Value::String(s) = env.gc.get(*arg) else {
+        return Err(vec!["lines <string>".into()]);
+    };
+    let owned = s.to_owned();
+    let mut map = HashMap::new();
+    for (index, segment) in owned.split_terminator('\n').enumerate() {
+        let key = env.gc.rooted(Value::String(index.to_string()));
+        let value = env.gc.rooted(Value::String(segment.to_owned()));
+        map.insert(key, value);
+    }
+    let map_value = env.gc.rooted(Value::Map(map));
+    let Value::Map(map) = env.gc.get(map_value) else {
+        unreachable!()
+    };
+    let entries = map.values().chain(map.keys()).copied().collect::<Vec<_>>();
+    for entry in entries {
+        env.gc.unroot(entry);
+    }
+    Ok(map_value)
+}
+
+// General continuations seem to be unimplementable as of now, not enough reification.
 pub(crate) fn catch(env: &mut Env, args: &[Expr]) -> Result {
     let [ref body] = args[..] else {
         return Err(vec!["catch <body>".into()]);
@@ -18,7 +83,6 @@ pub(crate) fn catch(env: &mut Env, args: &[Expr]) -> Result {
     let value = env.eval_expr(body)?;
 
     if let Value::Exception(throw) = env.gc.get(value) {
-        // May be correct.
         let throw = *throw;
         env.gc.root(throw);
         env.gc.unroot(value);

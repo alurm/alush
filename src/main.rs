@@ -1,4 +1,4 @@
-use std::io::stdin;
+use std::io::{stdin, Write};
 
 use interpreter::{Callable, Env, Value};
 
@@ -33,6 +33,8 @@ fn shell() {
     //     });
     // }
     loop {
+        print!("$ ");
+        std::io::stdout().flush().unwrap();
         if let Some(command) = grammar::shell(&mut iter) {
             let command = syntax::command_from_grammar(&command);
             // println!("parse: {command}");
@@ -49,18 +51,17 @@ fn shell() {
                 Err(e) => {
                     print!("error: ");
                     e.iter().for_each(|v| println!("{v}"));
-                    println!();
                     continue;
                 }
                 Ok(v) => match env.gc.get(v) {
-                    Value::String(s) => println!("{s}"),
-                    Value::Builtin(_f) => println!("<built-in fn>"),
-                    Value::Callable(Callable::Closure { .. }) => println!("<closure>"),
+                    Value::String(s) => print!("{s}"),
+                    Value::Builtin(_f) => print!("<built-in fn>"),
+                    Value::Callable(Callable::Closure { .. }) => print!("<closure>"),
                     Value::Exception(_) => {
-                        println!("<throw ...>");
+                        print!("<throw ...>");
                     }
-                    Value::LazyBuiltin(_) => println!("<lazy>"),
-                    Value::Map(_) => println!("<map>"),
+                    Value::LazyBuiltin(_) => print!("<lazy>"),
+                    Value::Map(_) => print!("<map>"),
                 },
             };
             println!();

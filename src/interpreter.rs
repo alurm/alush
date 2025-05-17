@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env::var, hash::Hash, rc::Rc};
+use std::{collections::{HashMap, HashSet}, env::var, hash::Hash, rc::Rc};
 
 use gc::{self, Gc};
 
@@ -27,7 +27,7 @@ pub enum Value {
     Map(HashMap<Gc<Value>, Gc<Value>>),
 }
 
-impl gc::Trace for Value {
+impl gc::Collect for Value {
     fn trace(&self) -> Vec<gc::Id> {
         match self {
             Value::String(_) => Vec::new(),
@@ -56,7 +56,7 @@ pub struct Stack {
     pub up: Option<Gc<Stack>>,
 }
 
-impl gc::Trace for Stack {
+impl gc::Collect for Stack {
     fn trace(&self) -> Vec<gc::Id> {
         let mut vec = self.frame.trace();
         if let Some(up) = self.up {
@@ -68,7 +68,7 @@ impl gc::Trace for Stack {
 
 // pub struct Stack(pub Vec<Frame>);
 
-impl gc::Trace for Frame {
+impl gc::Collect for Frame {
     fn trace(&self) -> Vec<gc::Id> {
         let mut vec = Vec::new();
         for v in self.variables.values() {
@@ -78,33 +78,10 @@ impl gc::Trace for Frame {
     }
 }
 
-// impl gc::Trace for Stack {
-//     fn trace(&self) -> Vec<gc::Id> {
-//         let mut result = Vec::new();
-//         for value in &self.0 {
-//             for (_, value) in &value.variables {
-//                 result.push(value.id);
-//             }
-//         };
-//         result
-//     }
-// }
-
-// impl gc::Trace for RefCell<Stack> {
-//     fn trace(&self) -> Vec<gc::Id> {
-//         let mut result = Vec::new();
-//         for value in &self.borrow().0 {
-//             for (_, value) in &value.variables {
-//                 result.push(value.id);
-//             }
-//         };
-//         result
-//     }
-// }
-
 pub struct Env {
     pub gc: gc::Heap,
     pub stack: Gc<Stack>,
+    // strings: Strings,
 }
 
 impl Env {
@@ -127,6 +104,10 @@ impl Env {
             ("throw", builtins::throw),
             ("println", builtins::println),
             ("map", builtins::map),
+            ("fail", builtins::fail),
+            ("apply", builtins::apply),
+            ("unix", builtins::unix),
+            ("lines", builtins::lines),
         ];
 
         let lazy_builtins: &[(_, LazyBuiltin)] = &[

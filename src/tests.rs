@@ -5,13 +5,62 @@ use crate::syntax::Expr;
 use super::*;
 
 #[test]
-fn test_gc_expr() {
-    let mut env = interpreter::Env::new(gc::Strategy::Aggressive);
-    let output = env.eval_expr(&Expr::String("3".into())).unwrap();
+fn test_apply() {
+    let mut env = interpreter::Env::new(gc::Strategy::Checking);
+    let mut input = syntax::input_from_str(
+        "
+        var six $(apply $+ 1 2 3)
+        var seven $(apply (+ $1 $2) 3 4)
+        + $six $seven
+    ",
+    );
+    let commands = grammar::file(&mut input).unwrap();
+    let commands = syntax::commands_from_grammar(&commands);
+    let output = env.eval_expr(&Expr::Block(Rc::new(commands))).unwrap();
     let Value::String(s) = env.gc.get(output) else {
         panic!()
     };
-    assert_eq!(s, "3");
+    assert_eq!(s, "13");
+    env.gc.unroot(output);
+    env.gc.unroot(env.stack);
+    env.gc.collect();
+    assert_eq!(0, env.gc.roots.len());
+    assert_eq!(0, env.gc.map.len());
+}
+
+#[test]
+fn test_unix() {
+    let mut env = interpreter::Env::new(gc::Strategy::Checking);
+    let mut input = syntax::input_from_str(
+        "
+        unix echo -n hi
+    ",
+    );
+    let commands = grammar::file(&mut input).unwrap();
+    let commands = syntax::commands_from_grammar(&commands);
+    let output = env.eval_expr(&Expr::Block(Rc::new(commands))).unwrap();
+    let Value::String(s) = env.gc.get(output) else {
+        panic!()
+    };
+    assert_eq!(s, "hi");
+    env.gc.unroot(output);
+    env.gc.unroot(env.stack);
+    env.gc.collect();
+    assert_eq!(0, env.gc.roots.len());
+    assert_eq!(0, env.gc.map.len());
+}
+
+#[test]
+fn test_fail() {
+    let mut env = interpreter::Env::new(gc::Strategy::Checking);
+    let mut input = syntax::input_from_str(
+        "
+        fail
+    ",
+    );
+    let commands = grammar::file(&mut input).unwrap();
+    let commands = syntax::commands_from_grammar(&commands);
+    let Err(_) = env.eval_expr(&Expr::Block(Rc::new(commands))) else { unreachable!() };
 }
 
 #[test]
@@ -38,6 +87,11 @@ fn test_maps() {
         panic!()
     };
     assert_eq!(s, "world");
+    env.gc.unroot(output);
+    env.gc.unroot(env.stack);
+    env.gc.collect();
+    assert_eq!(0, env.gc.roots.len());
+    assert_eq!(0, env.gc.map.len());
 }
 
 #[test]
@@ -55,28 +109,6 @@ fn test_gc() {
         panic!()
     };
     assert_eq!(s, "3");
-}
-
-// todo
-#[test]
-fn test_unix() -> Result<(), Box<dyn std::error::Error>> {
-    #[derive(Debug)]
-    struct E;
-    impl std::error::Error for E {}
-
-    impl std::fmt::Display for E {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str("E")
-        }
-    }
-
-    let Ok(process) = std::process::Command::new("pwd").spawn() else {
-        return Err(Box::new(E));
-    };
-    // process.
-    let output = process.wait_with_output().unwrap();
-    print!("{}", String::from_utf8(output.stdout).unwrap());
-    Ok(())
 }
 
 #[test]
@@ -123,14 +155,8 @@ fn test_precise_gc() {
     env.gc.unroot(id);
     env.gc.unroot(env.stack);
     env.gc.collect();
-    println!("roots: {}", env.gc.roots.len());
-    println!(
-        "objects: {}",
-        env.gc
-            .map
-            .iter()
-            .fold(0, |a, b| { if b.1.alive { a + 1 } else { a } })
-    );
+    assert_eq!(0, env.gc.roots.len());
+    assert_eq!(0, env.gc.map.len());
 }
 
 #[test]
@@ -164,13 +190,7 @@ fn test_precise_catch_loop_throw() {
     env.gc.unroot(env.stack);
     env.gc.collect();
     assert_eq!(env.gc.roots.len(), 0);
-    assert_eq!(
-        env.gc
-            .map
-            .iter()
-            .fold(0, |a, b| { if b.1.alive { a + 1 } else { a } }),
-        0
-    );
+    assert_eq!(env.gc.map.len(), 0);
 }
 
 #[test]
@@ -209,13 +229,7 @@ fn test_factorial() {
     env.gc.unroot(env.stack);
     env.gc.collect();
     assert_eq!(env.gc.roots.len(), 0);
-    assert_eq!(
-        0,
-        env.gc
-            .map
-            .iter()
-            .fold(0, |a, b| { if b.1.alive { a + 1 } else { a } })
-    );
+    assert_eq!(0, env.gc.map.len());
 }
 
 #[test]
@@ -257,13 +271,7 @@ fn test_closure() {
     env.gc.unroot(env.stack);
     env.gc.collect();
     assert_eq!(0, env.gc.roots.len());
-    assert_eq!(
-        0,
-        env.gc
-            .map
-            .iter()
-            .fold(0, |a, b| { if b.1.alive { a + 1 } else { a } })
-    );
+    assert_eq!(0, env.gc.map.len());
 }
 
 #[test]
@@ -336,11 +344,5 @@ fn test_map_each() {
     env.gc.unroot(env.stack);
     env.gc.collect();
     assert_eq!(0, env.gc.roots.len());
-    assert_eq!(
-        0,
-        env.gc
-            .map
-            .iter()
-            .fold(0, |a, b| { if b.1.alive { a + 1 } else { a } })
-    );
+    assert_eq!(0, env.gc.map.len());
 }
