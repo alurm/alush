@@ -127,14 +127,12 @@ impl Heap {
 
     fn get_object(&self, id: Id) -> &Object {
         assert!(self.id == id.heap);
-        let object = self.map.get(&id).unwrap();
-        object
+        self.map.get(&id).unwrap()
     }
 
     fn get_mut_object(&mut self, id: Id) -> &mut Object {
         assert!(self.id == id.heap);
-        let object = self.map.get_mut(&id).unwrap();
-        object
+        self.map.get_mut(&id).unwrap()
     }
 
     /// Returns a shared reference to a value contained in a [Gc].

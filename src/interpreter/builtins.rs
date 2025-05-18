@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use gc::Gc;
 
@@ -6,6 +6,77 @@ use crate::{
     interpreter::{Env, Result, Value},
     syntax::Expr,
 };
+
+pub(crate) fn or(env: &mut Env, args: &[Gc<Value>]) -> Result {
+    for &arg in args {
+        let Value::String(string) = env.gc.get(arg) else {
+            return Err(vec!["or <string>...".into()])
+        };
+        match string.as_ref() {
+            "true" => return Ok(env.gc.rooted(Value::String("true".into()))),
+            "false" => continue,
+            _ => return Err(vec!["or <value: true | false>...".into()])
+        };
+    }
+    Ok(env.gc.rooted(Value::String("false".into())))
+}
+
+pub(crate) fn and(env: &mut Env, args: &[Gc<Value>]) -> Result {
+    for &arg in args {
+        let Value::String(string) = env.gc.get(arg) else {
+            return Err(vec!["and <string>...".into()])
+        };
+        match string.as_ref() {
+            "true" => continue,
+            "false" => return Ok(env.gc.rooted(Value::String("false".into()))),
+            _ => return Err(vec!["and <value: true | false>...".into()])
+        };
+    }
+    Ok(env.gc.rooted(Value::String("true".into())))
+}
+
+pub(crate) fn more(env: &mut Env, args: &[Gc<Value>]) -> Result {
+    let &[a, b] = args else {
+        return Err(vec!["> <a> <b>".into()])
+    };
+    let (a, b) = (env.gc.get(a), env.gc.get(b));
+    let (Value::String(a), Value::String(b)) = (a, b) else {
+        return Err(vec!["> <a: string> <b: string>".into()])
+    };
+    let (a, b) = (a.parse::<isize>(), b.parse::<isize>());
+    let (Ok(a), Ok(b)) = (a, b) else {
+        return Err(vec!["> <a: number> <b: number>".into()])
+    };
+    Ok(env.gc.rooted(Value::String(if a > b { "true" } else { "false" }.into())))
+}
+
+pub(crate) fn less(env: &mut Env, args: &[Gc<Value>]) -> Result {
+    let &[a, b] = args else {
+        return Err(vec!["< <a> <b>".into()])
+    };
+    let (a, b) = (env.gc.get(a), env.gc.get(b));
+    let (Value::String(a), Value::String(b)) = (a, b) else {
+        return Err(vec!["< <a: string> <b: string>".into()])
+    };
+    let (a, b) = (a.parse::<isize>(), b.parse::<isize>());
+    let (Ok(a), Ok(b)) = (a, b) else {
+        return Err(vec!["< <a: number> <b: number>".into()])
+    };
+    Ok(env.gc.rooted(Value::String(if a < b { "true" } else { "false" }.into())))
+}
+
+pub(crate) fn vars(env: &mut Env, _args: &[Gc<Value>]) -> Result {
+    let mut result = BTreeMap::new();
+    let mut maybe_stack = Some(env.stack);
+    while let Some(stack) = maybe_stack {
+        let stack = env.gc.get(stack);
+        for (k, &v) in &stack.frame.variables {
+            result.entry(k.clone()).or_insert(v);
+        }
+        maybe_stack = stack.up;
+    }
+    Ok(env.gc.rooted(Value::Map(result)))
+}
 
 pub(crate) fn fail(_env: &mut Env, _args: &[Gc<Value>]) -> Result {
     Err(vec!["fail".into()])
@@ -57,7 +128,7 @@ pub(crate) fn lines(env: &mut Env, args: &[Gc<Value>]) -> Result {
         return Err(vec!["lines <string>".into()]);
     };
     let owned = s.to_owned();
-    let mut map = HashMap::new();
+    let mut map = BTreeMap::new();
     for (index, segment) in owned.split_terminator('\n').enumerate() {
         let key = index.to_string();
         let value = env.gc.rooted(Value::String(segment.to_owned()));
@@ -184,6 +255,18 @@ pub(crate) fn println(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     Ok(env.gc.rooted(Value::String("ok".into())))
 }
 
+pub(crate) fn print(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
+    for value in tail_values {
+        let Value::String(value) = env.gc.get(*value) else {
+            return Err(vec!["println <:string>...".into()]);
+        };
+
+        print!("{value}");
+    }
+
+    Ok(env.gc.rooted(Value::String("ok".into())))
+}
+
 pub(crate) fn var(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     for chunk in tail_values.chunks(2) {
         let [name, value] = chunk else {
@@ -280,7 +363,7 @@ pub(crate) fn mul(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
 }
 
 pub(crate) fn map(env: &mut Env, mut tail: &[Gc<Value>]) -> Result {
-    let mut map = HashMap::new();
+    let mut map = BTreeMap::new();
     while let [k, v, rest @ ..] = tail {
         let Value::String(k) = env.gc.get(*k) else {
             return Err(vec!["map: (<k: string> <value>)...".into()])

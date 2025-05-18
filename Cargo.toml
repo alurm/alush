@@ -8,3 +8,4 @@ edition = "2024"
 
 [dependencies]
 gc = { path = "gc" }
+libc = "0.2.172"

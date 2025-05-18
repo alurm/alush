@@ -1,36 +1,6 @@
 use std::io::{stdin, Write};
 
-use shell::{syntax, grammar, interpreter::{self, Callable, Env, Value}};
-
-fn chars() -> impl Iterator<Item = char> {
-    stdin().lines().map_while(Result::ok).flat_map(|s| {
-        let mut chars = Vec::new();
-        for c in s.chars() {
-            chars.push(c);
-        }
-        chars.push('\n');
-        chars
-    })
-}
-
-fn print_value(env: &Env, v: gc::Gc<Value>) {
-    match env.gc.get(v) {
-        Value::String(s) => print!("{s}"),
-        Value::Builtin(_f) => print!("<built-in fn>"),
-        Value::Callable(Callable::Closure { .. }) => print!("<closure>"),
-        Value::Exception(_) => {
-            print!("<throw ...>");
-        }
-        Value::LazyBuiltin(_) => print!("<lazy>"),
-        Value::Map(_) => print!("<map>"),
-    }
-    println!();
-}
-
-fn print_error(e: Vec<String>) {
-    print!("error: ");
-    e.iter().for_each(|v| println!("{v}"));
-}
+use shell::{grammar, interpreter::{self, print_error, Env}, syntax};
 
 fn shell() {
     let mut iter = (Box::new(chars()) as Box<dyn Iterator<Item = char>>).peekable();
@@ -45,21 +15,34 @@ fn shell() {
     loop {
         print!("$ ");
         std::io::stdout().flush().unwrap();
+        if iter.peek().is_none() { return }
         if let Some(command) = grammar::shell(&mut iter) {
             let command = syntax::command_from_grammar(&command);
             match env.eval_cmd(&command) {
-                Err(e) => print_error(e),
+                Err(e) => interpreter::print_error(e),
                 Ok(v) => {
-                    print_value(&env, v);
+                    env.print_value(v);
                     env.gc.unroot(v);
                 }
             }
         } else {
-            println!("syntax error. ctrl-d to reset the buffer, ctrl-c to exit");
-            for _ in iter {}
+            println!("error: syntax error");
+            // . ctrl-d to reset the buffer, ctrl-c to exit");
+            drop(iter);
             iter = (Box::new(chars()) as Box<dyn Iterator<Item = char>>).peekable()
         }
     }
+}
+
+fn chars() -> impl Iterator<Item = char> {
+    stdin().lines().map_while(Result::ok).flat_map(|s| {
+        let mut chars = Vec::new();
+        for c in s.chars() {
+            chars.push(c);
+        }
+        chars.push('\n');
+        chars
+    })
 }
 
 fn dofile(file: String) {
@@ -86,6 +69,9 @@ fn dofile(file: String) {
 }
 
 fn main() {
+    // Produces an empty line on `./shell | true` for some reason?
+    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
+
     let args = std::env::args();
     let args: Vec<_> = args.collect();
     if let Some(path) = args.get(1) {

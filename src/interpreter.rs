@@ -1,12 +1,10 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::{BTreeMap, HashMap}, rc::Rc};
 
 use gc::{self, Gc};
 
 use crate::syntax::{self, Expr};
 
 mod builtins;
-
-// pub use builtins::*;
 
 pub enum Callable {
     Closure {
@@ -24,8 +22,7 @@ pub enum Value {
     Callable(Callable),
     LazyBuiltin(LazyBuiltin),
     Exception(Gc<Value>),
-    // Map(HashMap<Gc<Value>, Gc<Value>>),
-    Map(HashMap<String, Gc<Value>>),
+    Map(BTreeMap<String, Gc<Value>>),
 }
 
 impl gc::Collect for Value {
@@ -38,7 +35,7 @@ impl gc::Collect for Value {
             Value::LazyBuiltin(_) => Vec::new(),
             Value::Map(m) => {
                 let mut result = Vec::new();
-                for (_, &v) in m {
+                for &v in m.values() {
                     result.push(v.id);
                 }
                 result
@@ -84,7 +81,55 @@ pub struct Env {
     // strings: Strings,
 }
 
+pub fn print_error(e: Vec<String>) {
+    print!("error: ");
+    e.iter().for_each(|v| println!("{v}"));
+}
+
 impl Env {
+    
+    pub fn print_value(&self, v: gc::Gc<Value>) {
+        fn rec(env: &Env, v: gc::Gc<Value>, mut depth: usize, in_map: bool) {
+            match env.gc.get(v) {
+                Value::String(s) => {
+                    let expr = Expr::String(s.into());
+                    let mut output = String::new();
+                    expr.pretty(&mut output, depth);
+                    print!("{output}");
+                },
+                Value::Builtin(_f) => print!("<built-in fn>"),
+                Value::Callable(Callable::Closure { code, .. }) => {
+                    let expr = Expr::Closure(code.clone());
+                    let mut output = String::new();
+                    expr.pretty(&mut output, depth);
+                    print!("<closure: {output}>");
+                }
+                Value::Exception(e) => {
+                    print!("<exception: ");
+                    rec(env, *e, depth, in_map);
+                    print!(">");
+                }
+                Value::LazyBuiltin(_) => print!("<lazy fn>"),
+                Value::Map(m) => {
+                    if !in_map { for _ in 0..depth { print!("    ") } }
+                    println!("{{");
+                    depth += 1;
+                    for (k, v) in m {
+                        for _ in 0..depth { print!("    ") }
+                        print!("{k}: ");
+                        rec(env, *v, depth, true);
+                        println!(",");
+                    }
+                    depth -= 1;
+                    for _ in 0..depth { print!("    ") }
+                    print!("}}");
+                },
+            }
+        }
+        rec(self, v, 0, false);
+        println!();
+    }
+
     pub fn new(strategy: gc::Strategy) -> Self {
         let mut gc = gc::Heap::new(strategy);
 
@@ -98,15 +143,21 @@ impl Env {
             ("+", builtins::add),
             ("*", builtins::mul),
             ("=", builtins::equal),
+            ("<", builtins::less),
+            (">", builtins::more),
             ("..", builtins::concat),
             ("!=", builtins::not_equal),
             ("throw", builtins::throw),
             ("println", builtins::println),
+            ("print", builtins::print),
             ("map", builtins::map),
             ("fail", builtins::fail),
             ("apply", builtins::apply),
             ("unix", builtins::unix),
             ("lines", builtins::lines),
+            ("vars", builtins::vars),
+            ("or", builtins::or),
+            ("and", builtins::and),
         ];
 
         let lazy_builtins: &[(_, LazyBuiltin)] = &[
@@ -195,6 +246,7 @@ impl Env {
                     map del k
                     map has k
                     map each fun
+                    map map fun
                 */
                 let [command, ref rest @ ..] = tail_values[..] else {
                     return Err(vec!["map: <command> ...".into()]);
@@ -203,32 +255,89 @@ impl Env {
                     return Err(vec!["map: <command: string> ...".into()]);
                 };
                 match command.as_str() {
-                    "each" => {
-                        let [fun] = rest else {
-                            return Err(vec!["map each <fn>".into()]);
-                        };
-                        // Cloning is expensive...
-                        let mut result = None;
-                        for (k, v) in map.clone() {
-                            if let Some(result) = result {
-                                self.gc.unroot(result);
-                            }
-                            let args = vec![self.gc.rooted(Value::String(k)), self.gc.root(v)];
-                            self.gc.root(*fun);
-                            result = Some(self.apply_cmd(*fun, &args)?);
+                    // Doesn't handle exceptions properly.
+                    // "each" => {
+                    //     let [fun] = rest else {
+                    //         return Err(vec!["map each <fn>".into()]);
+                    //     };
+                    //     // Cloning is expensive...
+                    //     let mut result = None;
+                    //     for (k, v) in map.clone() {
+                    //         if let Some(result) = result {
+                    //             self.gc.unroot(result);
+                    //         }
+                    //         let args = vec![self.gc.rooted(Value::String(k)), self.gc.root(v)];
+                    //         self.gc.root(*fun);
+                    //         result = Some(self.apply_cmd(*fun, &args)?);
+                    //     }
+                    //     self.gc.unroot(head);
+                    //     for &v in tail_values {
+                    //         self.gc.unroot(v);
+                    //     }
+                    //     Ok(result.unwrap_or_else(|| self.gc.rooted(Value::String("ok".into()))))
+                    // }
+                    "keys" => {
+                        let mut result = BTreeMap::new();
+                        // Expensive!
+                        let map = map.clone();
+                        for (i, k) in map.keys().cloned().enumerate() {
+                            result.insert(i.to_string(), self.gc.rooted(Value::String(k.clone())));
                         }
-                        // // let command = syntax::Command(Vec::new());
-                        // // command.
-                        // // self.eval_cmd()
-                        // // for (k, v) in map {
-                        // //     call()
-                        // // }
                         self.gc.unroot(head);
-                        for &v in tail_values {
-                            self.gc.unroot(v);
+                        for &r in tail_values {
+                            self.gc.unroot(r);
                         }
-                        Ok(result.unwrap_or_else(|| self.gc.rooted(Value::String("ok".into()))))
+                        result.values().for_each(|&value| self.gc.unroot(value));
+                        Ok(self.gc.rooted(Value::Map(result)))
                     }
+                    "values" => {
+                        let mut result = BTreeMap::new();
+                        // Expensive!
+                        let map = map.clone();
+                        for (i, v) in map.values().cloned().enumerate() {
+                            result.insert(i.to_string(), v);
+                        }
+                        self.gc.unroot(head);
+                        for &r in tail_values {
+                            self.gc.unroot(r);
+                        }
+                        Ok(self.gc.rooted(Value::Map(result)))
+                    }
+                    // "map" => {
+                    //     let &[fun] = rest else {
+                    //         return Err(vec!["map map <fn>".into()]);
+                    //     };
+                    //     let mut result = BTreeMap::new();
+                    //     // Cloning is expensive...
+                    //     let mut exception = None;
+                    //     for (k, v) in map.clone() {
+                    //         self.gc.root(fun);
+                    //         self.gc.root(v);
+                    //         let v = self.apply_cmd(fun, &[v])?;
+                    //         // self.gcu
+                    //         result.insert(k, v);
+                    //         // Exception checking shouldn't be manual!
+                    //         if let Value::Exception(_) = self.gc.get(v) {
+                    //             exception = Some(v);
+                    //             break
+                    //         }
+                    //     }
+
+                    //     for &v in map.values() {
+                    //         self.gc.unroot(v);
+                    //     }
+
+                    //     self.gc.unroot(head);
+                    //     for &v in tail_values {
+                    //         self.gc.unroot(v);
+                    //     }
+
+                    //     if let Some(exception) = exception {
+                    //         Ok(exception)
+                    //     } else {
+                    //         Ok(self.gc.rooted(Value::Map(result)))
+                    //     }
+                    // }
                     "get" => {
                         let [k] = rest else {
                             return Err(vec!["map get <key>".into()]);
@@ -448,7 +557,9 @@ impl Env {
 
                 for command in &commands.0 {
                     if let Some(value) = result {
-                        // Unused, I think.
+                        if let Value::Exception(_) = self.gc.get(value) {
+                            return Ok(value);
+                        }
                         self.gc.unroot(value);
                     }
                     result = Some(self.eval_cmd(command)?);
