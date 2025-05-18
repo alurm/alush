@@ -1,9 +1,0 @@
-var list (
-    var count 0
-    var scope $(scope)
-    val (
-        scope 
-    )
-)
-
-list a b c

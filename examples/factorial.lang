@@ -9,4 +9,5 @@ var factorial (
 
     choice
 )
-println $(factorial 5)
+set var $(factorial 5)
+println $var

@@ -2,7 +2,7 @@
 // The idea in this iteration is to use std::any::Any.
 use std::{
     any::Any,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     marker::PhantomData,
     sync::Mutex,
 };

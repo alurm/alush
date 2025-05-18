@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use gc::Gc;
 
 use crate::{
-    interpreter::{self, Env, Result, Value},
+    interpreter::{Env, Result, Value},
     syntax::Expr,
 };
 
@@ -110,20 +110,17 @@ pub(crate) fn concat(env: &mut Env, args: &[Gc<Value>]) -> Result {
     Ok(env.gc.rooted(Value::String(result)))
 }
 
-pub(crate) fn cond(env: &mut Env, args: &[Gc<Value>]) -> Result {
-    let [cond, then, otherwise] = args[..] else {
+pub(crate) fn cond(env: &mut Env, args: &[Expr]) -> Result {
+    let [cond, then, otherwise] = args else {
         return Err(vec!["if <cond> <then> <else>".into()]);
     };
-    let Value::String(cond) = env.gc.get(cond) else {
+    let cond_value = env.eval_expr(cond)?;
+    let Value::String(cond) = env.gc.get(cond_value) else {
         return Err(vec!["if: <cond: string>".into()]);
     };
-    if *cond == "true" {
-        env.gc.root(then);
-        Ok(then)
-    } else {
-        env.gc.root(otherwise);
-        Ok(otherwise)
-    }
+    let result = env.eval_expr(if cond == "true" { then } else { otherwise });
+    env.gc.unroot(cond_value);
+    result
 }
 
 pub(crate) fn equal(env: &mut Env, args: &[Gc<Value>]) -> Result {

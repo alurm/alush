@@ -1,15 +1,6 @@
 use std::io::{stdin, Write};
 
-use interpreter::{Callable, Env, Value};
-
-mod interpreter;
-// mod gc;
-mod grammar;
-mod print;
-mod syntax;
-
-#[cfg(test)]
-mod tests;
+use shell::{syntax, grammar, interpreter::{self, Callable, Env, Value}};
 
 fn chars() -> impl Iterator<Item = char> {
     stdin().lines().map_while(Result::ok).flat_map(|s| {
@@ -20,6 +11,25 @@ fn chars() -> impl Iterator<Item = char> {
         chars.push('\n');
         chars
     })
+}
+
+fn print_value(env: &Env, v: gc::Gc<Value>) {
+    match env.gc.get(v) {
+        Value::String(s) => print!("{s}"),
+        Value::Builtin(_f) => print!("<built-in fn>"),
+        Value::Callable(Callable::Closure { .. }) => print!("<closure>"),
+        Value::Exception(_) => {
+            print!("<throw ...>");
+        }
+        Value::LazyBuiltin(_) => print!("<lazy>"),
+        Value::Map(_) => print!("<map>"),
+    }
+    println!();
+}
+
+fn print_error(e: Vec<String>) {
+    print!("error: ");
+    e.iter().for_each(|v| println!("{v}"));
 }
 
 fn shell() {
@@ -37,54 +47,16 @@ fn shell() {
         std::io::stdout().flush().unwrap();
         if let Some(command) = grammar::shell(&mut iter) {
             let command = syntax::command_from_grammar(&command);
-            // println!("parse: {command}");
-            // let env: eval::Env = Some(Rc::new(RefCell::new(
-            //         EnvNode {
-            //             up: None,
-            //             variables: std::collections::HashMap::from([
-            //                 ("greeting".to_string(), eval::Value::String("hi".to_string()))
-            //             ]),
-            //         }
-            // )));
-            // command.eval(env);
             match env.eval_cmd(&command) {
-                Err(e) => {
-                    print!("error: ");
-                    e.iter().for_each(|v| println!("{v}"));
-                    continue;
+                Err(e) => print_error(e),
+                Ok(v) => {
+                    print_value(&env, v);
+                    env.gc.unroot(v);
                 }
-                Ok(v) => match env.gc.get(v) {
-                    Value::String(s) => print!("{s}"),
-                    Value::Builtin(_f) => print!("<built-in fn>"),
-                    Value::Callable(Callable::Closure { .. }) => print!("<closure>"),
-                    Value::Exception(_) => {
-                        print!("<throw ...>");
-                    }
-                    Value::LazyBuiltin(_) => print!("<lazy>"),
-                    Value::Map(_) => print!("<map>"),
-                },
-            };
-            println!();
+            }
         } else {
             println!("syntax error. ctrl-d to reset the buffer, ctrl-c to exit");
-
-            // drop(iter);
-            // // Consume all available input and try again?
-            // // ^D with no input chars will restart it.
             for _ in iter {}
-
-            // Reset the buffer.
-            // {
-            //     let mut stdin = stdin().lock();
-            //     if let Ok(buffer) = stdin.fill_buf() {
-            //         let len = buffer.len();
-            //         if len == 0 { return }
-            //         stdin.consume(len);
-            //     } else {
-            //         return
-            //     }
-            // }
-
             iter = (Box::new(chars()) as Box<dyn Iterator<Item = char>>).peekable()
         }
     }
@@ -94,22 +66,21 @@ fn dofile(file: String) {
     let mut env = interpreter::Env::new(gc::Strategy::Default);
     let mut input = syntax::input_from_str(&file);
     let Some(file) = grammar::file(&mut input) else {
-        println!("Syntax error");
+        println!("syntax error");
         return;
     };
     let commands = syntax::commands_from_grammar(&file);
+    let mut result = None;
     for command in commands.0 {
+        if let Some(result) = result {
+            env.gc.unroot(result);
+        }
         match env.eval_cmd(&command) {
-            Err(error) => {
-                println!("Error!");
-                for e in error {
-                    println!("{e}")
-                }
-                return;
+            Err(e) => {
+                print_error(e);
+                return
             }
-            Ok(value) => {
-                env.gc.unroot(value);
-            }
+            Ok(v) => result = Some(v),
         }
     }
 }

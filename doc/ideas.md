@@ -16,3 +16,13 @@
 - Closures.
 
 # [Syntax](./syntax.md)
+
+# To-do
+
+- Make errors cause unroots to happen?
+- Make maps accept any `Gc<T>` as a key, not only strings?
+- Make examples tested.
+- Add macros.
+- Add continuations.
+- Make locals be looked up faster.
+- Don't require ^D.

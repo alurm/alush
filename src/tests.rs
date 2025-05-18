@@ -1,7 +1,6 @@
 use std::rc::Rc;
 
-use crate::syntax::Expr;
-
+use crate::{interpreter::{Env, Value}, syntax::Expr};
 use super::*;
 
 #[test]
@@ -193,19 +192,44 @@ fn test_precise_catch_loop_throw() {
     assert_eq!(env.gc.map.len(), 0);
 }
 
+
+#[test]
+fn test_factorial_example() {
+    let string = include_str!("../examples/factorial.lang");
+    let mut input = syntax::input_from_str(string);
+    let commands = grammar::file(&mut input).unwrap();
+    let commands = syntax::commands_from_grammar(&commands);
+    println!("commands:");
+    for command in &commands.0 {
+        println!("{command}")
+    }
+    let mut env = interpreter::Env::new(gc::Strategy::Checking);
+    let output = env
+        .eval_expr(&syntax::Expr::Block(Rc::new(commands)))
+        .unwrap();
+    let stack = env.gc.get(env.stack);
+    let result = stack.frame.variables.get("var").unwrap();
+    let Value::String(s) = env.gc.get(*result) else {
+        panic!()
+    };
+    assert_eq!(s, "120");
+    env.gc.unroot(output);
+    env.gc.unroot(env.stack);
+    env.gc.collect();
+    assert_eq!(env.gc.roots.len(), 0);
+    assert_eq!(0, env.gc.map.len());
+}
+
 #[test]
 fn test_factorial() {
     let string = "
         var factorial (
             var x $1
 
-            var choice $(
-                if $(= $x 0) (val 1) (
-                    * $x $(factorial $(+ $x -1))
-                )
-            )
-
-            choice
+            if $(= $x 0) \\
+                $(val 1)
+                $(* $x $(factorial $(+ $x -1)))
+            ;
         )
 
         factorial 5
@@ -225,6 +249,35 @@ fn test_factorial() {
         panic!()
     };
     assert_eq!(s, "120");
+    env.gc.unroot(output);
+    env.gc.unroot(env.stack);
+    env.gc.collect();
+    assert_eq!(env.gc.roots.len(), 0);
+    assert_eq!(0, env.gc.map.len());
+}
+
+#[test]
+fn test_multiline_command() {
+    let string = "
+        val \\
+            3
+        ;
+    ";
+    let mut input = syntax::input_from_str(string);
+    let commands = grammar::file(&mut input).unwrap();
+    let commands = syntax::commands_from_grammar(&commands);
+    println!("commands:");
+    for command in &commands.0 {
+        println!("{command}")
+    }
+    let mut env = interpreter::Env::new(gc::Strategy::Checking);
+    let output = env
+        .eval_expr(&syntax::Expr::Block(Rc::new(commands)))
+        .unwrap();
+    let Value::String(s) = env.gc.get(output) else {
+        panic!()
+    };
+    assert_eq!(s, "3");
     env.gc.unroot(output);
     env.gc.unroot(env.stack);
     env.gc.collect();

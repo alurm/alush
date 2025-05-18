@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, env::var, hash::Hash, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 use gc::{self, Gc};
 
@@ -97,7 +97,6 @@ impl Env {
             ("inc", builtins::inc),
             ("+", builtins::add),
             ("*", builtins::mul),
-            ("if", builtins::cond),
             ("=", builtins::equal),
             ("..", builtins::concat),
             ("!=", builtins::not_equal),
@@ -113,6 +112,7 @@ impl Env {
         let lazy_builtins: &[(_, LazyBuiltin)] = &[
             ("repeat", builtins::repeat),
             ("catch", builtins::catch),
+            ("if", builtins::cond),
         ];
 
         let mut variables = Vec::new();
@@ -302,7 +302,6 @@ impl Env {
                     _ => Err(vec!["map: unknown command".into()]),
                 }
             }
-            // errors should ideally cause unroots to happen?
             Value::String(_) => Err(vec!["cmd's fn must not be a string".into()]),
             Value::Builtin(f) => {
                 let result = f(self, tail_values);
