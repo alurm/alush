@@ -243,7 +243,7 @@ pub(crate) fn inc(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     let Value::String(value) = env.gc.get(value) else {
         return Err(vec!["inc <number: string>".into()]);
     };
-    let Ok(n) = value.parse::<i32>() else {
+    let Ok(n) = value.parse::<isize>() else {
         return Err(vec!["inc: parse failed".into()]);
     };
     let str = format!("{}", n + 1);
@@ -257,7 +257,7 @@ pub(crate) fn add(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
         let Value::String(value) = value else {
             return Err(vec!["+ <number: string>...".into()]);
         };
-        let Ok(number) = value.parse::<i32>() else {
+        let Ok(number) = value.parse::<isize>() else {
             return Err(vec!["+: parse failed".into()]);
         };
         sum += number;
@@ -273,7 +273,7 @@ pub(crate) fn mul(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
         let Value::String(value) = value else {
             return Err(vec!["* <number: string>...".into()]);
         };
-        let Ok(number) = value.parse::<i32>() else {
+        let Ok(number) = value.parse::<isize>() else {
             return Err(vec!["*: parse failed".into()]);
         };
         product *= number;
