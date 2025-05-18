@@ -24,7 +24,8 @@ pub enum Value {
     Callable(Callable),
     LazyBuiltin(LazyBuiltin),
     Exception(Gc<Value>),
-    Map(HashMap<Gc<Value>, Gc<Value>>),
+    // Map(HashMap<Gc<Value>, Gc<Value>>),
+    Map(HashMap<String, Gc<Value>>),
 }
 
 impl gc::Collect for Value {
@@ -37,8 +38,7 @@ impl gc::Collect for Value {
             Value::LazyBuiltin(_) => Vec::new(),
             Value::Map(m) => {
                 let mut result = Vec::new();
-                for (&k, &v) in m {
-                    result.push(k.id);
+                for (_, &v) in m {
                     result.push(v.id);
                 }
                 result
@@ -213,7 +213,7 @@ impl Env {
                             if let Some(result) = result {
                                 self.gc.unroot(result);
                             }
-                            let args = vec![self.gc.root(k), self.gc.root(v)];
+                            let args = vec![self.gc.rooted(Value::String(k)), self.gc.root(v)];
                             self.gc.root(*fun);
                             result = Some(self.apply_cmd(*fun, &args)?);
                         }
@@ -233,6 +233,9 @@ impl Env {
                         let [k] = rest else {
                             return Err(vec!["map get <key>".into()]);
                         };
+                        let Value::String(k) = self.gc.get(*k) else {
+                            return Err(vec!["map del <key: string>".into()]);
+                        };
                         let Some(&v) = map.get(k) else {
                             return Err(vec!["map get: key not found".into()]);
                         };
@@ -248,10 +251,14 @@ impl Env {
                         let [k] = rest else {
                             return Err(vec!["map del <key>".into()]);
                         };
+                        let Value::String(k) = self.gc.get(*k) else {
+                            return Err(vec!["map del <key: string>".into()]);
+                        };
+                        let k = k.clone();
                         let Value::Map(map) = self.gc.get_mut(head) else {
                             unreachable!()
                         };
-                        map.remove(k);
+                        map.remove(&k);
                         self.gc.unroot(head);
                         for &r in tail_values {
                             self.gc.unroot(r);
@@ -261,6 +268,9 @@ impl Env {
                     "has" => {
                         let [k] = rest else {
                             return Err(vec!["map has <key>".into()]);
+                        };
+                        let Value::String(k) = self.gc.get(*k) else {
+                            return Err(vec!["map del <key: string>".into()]);
                         };
                         let has = map.contains_key(k);
                         self.gc.unroot(head);
@@ -275,10 +285,14 @@ impl Env {
                         let [k, v] = rest else {
                             return Err(vec!["map set <key> <value>".into()]);
                         };
+                        let Value::String(k) = self.gc.get(*k) else {
+                            return Err(vec!["map del <key: string>".into()]);
+                        };
+                        let k = k.clone();
                         let Value::Map(map) = self.gc.get_mut(head) else {
                             unreachable!()
                         };
-                        map.insert(*k, *v);
+                        map.insert(k, *v);
                         self.gc.unroot(head);
                         for &r in tail_values {
                             self.gc.unroot(r)

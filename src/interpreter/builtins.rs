@@ -59,7 +59,7 @@ pub(crate) fn lines(env: &mut Env, args: &[Gc<Value>]) -> Result {
     let owned = s.to_owned();
     let mut map = HashMap::new();
     for (index, segment) in owned.split_terminator('\n').enumerate() {
-        let key = env.gc.rooted(Value::String(index.to_string()));
+        let key = index.to_string();
         let value = env.gc.rooted(Value::String(segment.to_owned()));
         map.insert(key, value);
     }
@@ -67,7 +67,7 @@ pub(crate) fn lines(env: &mut Env, args: &[Gc<Value>]) -> Result {
     let Value::Map(map) = env.gc.get(map_value) else {
         unreachable!()
     };
-    let entries = map.values().chain(map.keys()).copied().collect::<Vec<_>>();
+    let entries = map.values().copied().collect::<Vec<_>>();
     for entry in entries {
         env.gc.unroot(entry);
     }
@@ -285,7 +285,10 @@ pub(crate) fn mul(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
 pub(crate) fn map(env: &mut Env, mut tail: &[Gc<Value>]) -> Result {
     let mut map = HashMap::new();
     while let [k, v, rest @ ..] = tail {
-        map.insert(*k, *v);
+        let Value::String(k) = env.gc.get(*k) else {
+            return Err(vec!["map: (<k: string> <value>)...".into()])
+        };
+        map.insert(k.clone(), *v);
         tail = rest;
     }
     Ok(env.gc.rooted(Value::Map(map)))

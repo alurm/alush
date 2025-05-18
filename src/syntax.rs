@@ -79,22 +79,3 @@ pub fn input_from_str(s: &str) -> Input {
 
     fat.peekable()
 }
-
-#[test]
-#[ignore]
-fn a_test() {
-    let mut input = input_from_str(
-        "
-        # Hello, world
-        # Very cool
-        a b c
-        d $(e f g)
-        (
-            # Recursion
-        )
-        # This is hack to end input.
-        )
-    ",
-    );
-    dbg!(grammar::multiline_commands(&mut input));
-}
