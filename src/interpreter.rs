@@ -164,6 +164,7 @@ impl Env {
             ("repeat", builtins::repeat),
             ("catch", builtins::catch),
             ("if", builtins::cond),
+            ("assert", builtins::assert),
         ];
 
         let mut variables = Vec::new();

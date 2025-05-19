@@ -82,6 +82,28 @@ pub(crate) fn fail(_env: &mut Env, _args: &[Gc<Value>]) -> Result {
     Err(vec!["fail".into()])
 }
 
+pub(crate) fn assert(env: &mut Env, args: &[Expr]) -> Result {
+    let [arg] = args else {
+        return Err(vec!["assert <boolean: expr>".into()])
+    };
+    let value = env.eval_expr(arg)?;
+    let Value::String(boolean) = env.gc.get(value) else {
+        let mut pretty = String::new();
+        arg.pretty(&mut pretty, 0);
+        let string = format!("assertion failed {}", pretty);
+        return Err(vec![string])
+    };
+    match boolean.as_ref() {
+        "true" => Ok(env.gc.rooted(Value::String("ok".into()))),
+        _ => {
+            let mut pretty = String::new();
+            arg.pretty(&mut pretty, 0);
+            let string = format!("assertion failed {}", pretty);
+            Err(vec![string])
+        }
+    }
+}
+
 pub(crate) fn apply(env: &mut Env, args: &[Gc<Value>]) -> Result {
     // Root once more since they'll be unrooted twice.
     args.iter().for_each(|&arg| {
@@ -245,11 +267,8 @@ pub(crate) fn val(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
 
 pub(crate) fn println(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     for value in tail_values {
-        let Value::String(value) = env.gc.get(*value) else {
-            return Err(vec!["println <:string>...".into()]);
-        };
-
-        println!("{value}");
+        env.print_value(*value);
+        println!();
     }
 
     Ok(env.gc.rooted(Value::String("ok".into())))
@@ -257,11 +276,7 @@ pub(crate) fn println(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
 
 pub(crate) fn print(env: &mut Env, tail_values: &[Gc<Value>]) -> Result {
     for value in tail_values {
-        let Value::String(value) = env.gc.get(*value) else {
-            return Err(vec!["println <:string>...".into()]);
-        };
-
-        print!("{value}");
+        env.print_value(*value);
     }
 
     Ok(env.gc.rooted(Value::String("ok".into())))

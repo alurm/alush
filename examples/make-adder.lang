@@ -1,0 +1,20 @@
+var make-adder (
+    var count 0
+    val (
+        set count $(+ $count $1)
+        get count
+    )
+)
+
+var a1 $(make-adder)
+var a2 $(make-adder)
+
+# 10.
+println $(a1 10)
+# 30.
+println $(a1 20)
+# 60.
+println $(a1 30)
+
+# This one has got nothing.
+println $(a2 0)

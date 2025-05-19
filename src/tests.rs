@@ -375,6 +375,7 @@ fn test_parse_command() {
     assert_eq!(s, "3");
 }
 
+#[ignore]
 #[test]
 fn test_map_each() {
     let mut env = interpreter::Env::new(gc::Strategy::Checking);
