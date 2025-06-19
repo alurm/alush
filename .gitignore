@@ -1,3 +1,8 @@
-.direnv
-.vscode
+# Rust.
+
 /target
+
+# Nix.
+
+.direnv
+result

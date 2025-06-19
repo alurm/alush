@@ -204,7 +204,7 @@ impl Heap {
 
         // Sweep.
         self.map.retain(|_, object| object.reachable);
-    
+
         self.map.shrink_to_fit();
         self.roots.shrink_to_fit();
         self.map
@@ -226,7 +226,7 @@ impl<T: Collect> Collect for Option<T> {
 
 #[cfg(test)]
 mod test {
-    use super::{Gc, Heap, Id, Strategy, Collect};
+    use super::{Collect, Gc, Heap, Id, Strategy};
 
     enum Tree<T: 'static> {
         Leaf(T),

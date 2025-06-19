@@ -1,6 +1,10 @@
-use std::io::{stdin, Write};
+use std::io::{Write, stdin};
 
-use shell::{grammar, interpreter::{self, print_error, Env}, syntax};
+use alush::{
+    grammar,
+    interpreter::{self, Env, print_error},
+    syntax,
+};
 
 fn shell() {
     let mut iter = (Box::new(chars()) as Box<dyn Iterator<Item = char>>).peekable();
@@ -15,7 +19,9 @@ fn shell() {
     loop {
         print!("$ ");
         std::io::stdout().flush().unwrap();
-        if iter.peek().is_none() { return }
+        if iter.peek().is_none() {
+            return;
+        }
         if let Some(command) = grammar::shell(&mut iter) {
             let command = syntax::command_from_grammar(&command);
             match env.eval_cmd(&command) {
@@ -61,7 +67,7 @@ fn dofile(file: String) {
         match env.eval_cmd(&command) {
             Err(e) => {
                 print_error(e);
-                return
+                return;
             }
             Ok(v) => result = Some(v),
         }
@@ -69,7 +75,6 @@ fn dofile(file: String) {
 }
 
 fn main() {
-    // Produces an empty line on `./shell | true` for some reason?
     unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL) };
 
     let args = std::env::args();

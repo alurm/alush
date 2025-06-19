@@ -10,12 +10,12 @@ use crate::{
 pub(crate) fn or(env: &mut Env, args: &[Gc<Value>]) -> Result {
     for &arg in args {
         let Value::String(string) = env.gc.get(arg) else {
-            return Err(vec!["or <string>...".into()])
+            return Err(vec!["or <string>...".into()]);
         };
         match string.as_ref() {
             "true" => return Ok(env.gc.rooted(Value::String("true".into()))),
             "false" => continue,
-            _ => return Err(vec!["or <value: true | false>...".into()])
+            _ => return Err(vec!["or <value: true | false>...".into()]),
         };
     }
     Ok(env.gc.rooted(Value::String("false".into())))
@@ -24,12 +24,12 @@ pub(crate) fn or(env: &mut Env, args: &[Gc<Value>]) -> Result {
 pub(crate) fn and(env: &mut Env, args: &[Gc<Value>]) -> Result {
     for &arg in args {
         let Value::String(string) = env.gc.get(arg) else {
-            return Err(vec!["and <string>...".into()])
+            return Err(vec!["and <string>...".into()]);
         };
         match string.as_ref() {
             "true" => continue,
             "false" => return Ok(env.gc.rooted(Value::String("false".into()))),
-            _ => return Err(vec!["and <value: true | false>...".into()])
+            _ => return Err(vec!["and <value: true | false>...".into()]),
         };
     }
     Ok(env.gc.rooted(Value::String("true".into())))
@@ -37,32 +37,36 @@ pub(crate) fn and(env: &mut Env, args: &[Gc<Value>]) -> Result {
 
 pub(crate) fn more(env: &mut Env, args: &[Gc<Value>]) -> Result {
     let &[a, b] = args else {
-        return Err(vec!["> <a> <b>".into()])
+        return Err(vec!["> <a> <b>".into()]);
     };
     let (a, b) = (env.gc.get(a), env.gc.get(b));
     let (Value::String(a), Value::String(b)) = (a, b) else {
-        return Err(vec!["> <a: string> <b: string>".into()])
+        return Err(vec!["> <a: string> <b: string>".into()]);
     };
     let (a, b) = (a.parse::<isize>(), b.parse::<isize>());
     let (Ok(a), Ok(b)) = (a, b) else {
-        return Err(vec!["> <a: number> <b: number>".into()])
+        return Err(vec!["> <a: number> <b: number>".into()]);
     };
-    Ok(env.gc.rooted(Value::String(if a > b { "true" } else { "false" }.into())))
+    Ok(env
+        .gc
+        .rooted(Value::String(if a > b { "true" } else { "false" }.into())))
 }
 
 pub(crate) fn less(env: &mut Env, args: &[Gc<Value>]) -> Result {
     let &[a, b] = args else {
-        return Err(vec!["< <a> <b>".into()])
+        return Err(vec!["< <a> <b>".into()]);
     };
     let (a, b) = (env.gc.get(a), env.gc.get(b));
     let (Value::String(a), Value::String(b)) = (a, b) else {
-        return Err(vec!["< <a: string> <b: string>".into()])
+        return Err(vec!["< <a: string> <b: string>".into()]);
     };
     let (a, b) = (a.parse::<isize>(), b.parse::<isize>());
     let (Ok(a), Ok(b)) = (a, b) else {
-        return Err(vec!["< <a: number> <b: number>".into()])
+        return Err(vec!["< <a: number> <b: number>".into()]);
     };
-    Ok(env.gc.rooted(Value::String(if a < b { "true" } else { "false" }.into())))
+    Ok(env
+        .gc
+        .rooted(Value::String(if a < b { "true" } else { "false" }.into())))
 }
 
 pub(crate) fn vars(env: &mut Env, _args: &[Gc<Value>]) -> Result {
@@ -84,14 +88,14 @@ pub(crate) fn fail(_env: &mut Env, _args: &[Gc<Value>]) -> Result {
 
 pub(crate) fn assert(env: &mut Env, args: &[Expr]) -> Result {
     let [arg] = args else {
-        return Err(vec!["assert <boolean: expr>".into()])
+        return Err(vec!["assert <boolean: expr>".into()]);
     };
     let value = env.eval_expr(arg)?;
     let Value::String(boolean) = env.gc.get(value) else {
         let mut pretty = String::new();
         arg.pretty(&mut pretty, 0);
         let string = format!("assertion failed {}", pretty);
-        return Err(vec![string])
+        return Err(vec![string]);
     };
     match boolean.as_ref() {
         "true" => Ok(env.gc.rooted(Value::String("ok".into()))),
@@ -381,7 +385,7 @@ pub(crate) fn map(env: &mut Env, mut tail: &[Gc<Value>]) -> Result {
     let mut map = BTreeMap::new();
     while let [k, v, rest @ ..] = tail {
         let Value::String(k) = env.gc.get(*k) else {
-            return Err(vec!["map: (<k: string> <value>)...".into()])
+            return Err(vec!["map: (<k: string> <value>)...".into()]);
         };
         map.insert(k.clone(), *v);
         tail = rest;

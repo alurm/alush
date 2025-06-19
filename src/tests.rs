@@ -1,7 +1,10 @@
 use std::rc::Rc;
 
-use crate::{interpreter::{Env, Value}, syntax::Expr};
 use super::*;
+use crate::{
+    interpreter::{Env, Value},
+    syntax::Expr,
+};
 
 #[test]
 fn test_apply() {
@@ -59,7 +62,9 @@ fn test_fail() {
     );
     let commands = grammar::file(&mut input).unwrap();
     let commands = syntax::commands_from_grammar(&commands);
-    let Err(_) = env.eval_expr(&Expr::Block(Rc::new(commands))) else { unreachable!() };
+    let Err(_) = env.eval_expr(&Expr::Block(Rc::new(commands))) else {
+        unreachable!()
+    };
 }
 
 #[test]
@@ -191,7 +196,6 @@ fn test_precise_catch_loop_throw() {
     assert_eq!(env.gc.roots.len(), 0);
     assert_eq!(env.gc.map.len(), 0);
 }
-
 
 #[test]
 fn test_factorial_example() {

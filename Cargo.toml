@@ -2,7 +2,7 @@
 members = ["gc"]
 
 [package]
-name = "shell"
+name = "alush"
 version = "0.1.0"
 edition = "2024"
 

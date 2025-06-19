@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, HashMap}, rc::Rc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    rc::Rc,
+};
 
 use gc::{self, Gc};
 
@@ -87,7 +90,6 @@ pub fn print_error(e: Vec<String>) {
 }
 
 impl Env {
-    
     pub fn print_value(&self, v: gc::Gc<Value>) {
         fn rec(env: &Env, v: gc::Gc<Value>, mut depth: usize, in_map: bool) {
             match env.gc.get(v) {
@@ -96,7 +98,7 @@ impl Env {
                     let mut output = String::new();
                     expr.pretty(&mut output, depth);
                     print!("{output}");
-                },
+                }
                 Value::Builtin(_f) => print!("<built-in fn>"),
                 Value::Callable(Callable::Closure { code, .. }) => {
                     let expr = Expr::Closure(code.clone());
@@ -111,19 +113,27 @@ impl Env {
                 }
                 Value::LazyBuiltin(_) => print!("<lazy fn>"),
                 Value::Map(m) => {
-                    if !in_map { for _ in 0..depth { print!("    ") } }
+                    if !in_map {
+                        for _ in 0..depth {
+                            print!("    ")
+                        }
+                    }
                     println!("{{");
                     depth += 1;
                     for (k, v) in m {
-                        for _ in 0..depth { print!("    ") }
+                        for _ in 0..depth {
+                            print!("    ")
+                        }
                         print!("{k}: ");
                         rec(env, *v, depth, true);
                         println!(",");
                     }
                     depth -= 1;
-                    for _ in 0..depth { print!("    ") }
+                    for _ in 0..depth {
+                        print!("    ")
+                    }
                     print!("}}");
-                },
+                }
             }
         }
         rec(self, v, 0, false);
@@ -188,8 +198,7 @@ impl Env {
             up: None,
         });
 
-        gc
-            .get(stack)
+        gc.get(stack)
             .frame
             .variables
             .values()
