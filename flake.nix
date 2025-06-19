@@ -5,26 +5,23 @@
     nixpkgs,
     rust-overlay,
     flake-utils,
-    ...
+    self,
   }:
     flake-utils.lib.eachDefaultSystem (system: let
       pkgs = (import nixpkgs) {
         inherit system;
-        overlays = [(import rust-overlay)];
+        overlays = [(import rust-overlay) self.overlays.default];
       };
     in {
-      packages.default = pkgs.rustPlatform.buildRustPackage (finalAttrs: {
-        pname = "alush";
-        version = "0.1.0";
-        src = ./.;
-        cargoHash = "sha256-yyNDCyVE+s9mFWmQPvCl4U8g82wk4KwU3kPk3rBqKrA=";
-        meta = {
-          homepage = "https://github.com/alurm/alush";
-          maintainers = [];
-          license = pkgs.lib.licenses.mit;
-          description = "A GC and a shell with closures and maps in Rust";
-        };
-      });
+      packages = {
+        default = pkgs.alush;
+        static = pkgs.pkgsStatic.alush;
+
+        # For releases.
+        cross-static-aarch64-linux = pkgs.pkgsCross.aarch64-multiplatform.pkgsStatic.alush;
+        cross-static-x86_64-linux = pkgs.pkgsCross.musl64.pkgsStatic.alush;
+      };
+
       devShells.default = pkgs.mkShell {
         packages = [
           (pkgs.rust-bin.nightly.latest.default.override {
@@ -32,5 +29,10 @@
           })
         ];
       };
-    });
+    })
+    // {
+      overlays.default = final: prev: {
+        alush = final.callPackage ./package.nix {};
+      };
+    };
 }
