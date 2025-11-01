@@ -24,6 +24,7 @@ fn shell() {
         }
         if let Some(command) = grammar::shell(&mut iter) {
             let command = syntax::command_from_grammar(&command);
+            // dbg!(&command);
             match env.eval_cmd(&command) {
                 Err(e) => interpreter::print_error(e),
                 Ok(v) => {

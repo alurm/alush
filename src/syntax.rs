@@ -1,9 +1,12 @@
 pub type Input = std::iter::Peekable<Box<dyn Iterator<Item = char>>>;
 
+#[derive(Debug)]
 pub struct Command(pub Vec<Expr>);
 
+#[derive(Debug)]
 pub struct Commands(pub Vec<Command>);
 
+#[derive(Debug)]
 pub enum Expr {
     String(String),
     // Rc is needed since closures need to own commands without cloning exprs expensively.
